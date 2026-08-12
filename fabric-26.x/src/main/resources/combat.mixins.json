@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.combat.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "AbstractContainerMenuMixin",
+    "LivingEntityMixin",
+    "AnvilMenuMixin",
+    "PotionBrewingMixin",
+    "ItemCooldownsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

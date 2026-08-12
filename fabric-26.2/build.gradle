@@ -1,0 +1,35 @@
+plugins {
+    id 'net.fabricmc.fabric-loom'
+    id 'maven-publish'
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:26.2"
+    implementation "net.fabricmc:fabric-loader:0.18.4"
+    implementation "net.fabricmc.fabric-api:fabric-api:0.154.2+26.2"
+    implementation project(':common')
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 25
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs = [
+                project(':fabric-26.x').file('src/main/java')
+            ]
+        }
+        resources {
+            srcDirs = [
+                project(':fabric-26.x').file('src/main/resources')
+            ]
+        }
+    }
+}

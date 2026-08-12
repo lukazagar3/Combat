@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "id": "combat",
+  "name": "Combat",
+  "version": "1.0.0",
+  "description": "Server-side PvP and Survival mechanics mod",
+  "authors": [
+    "Antigravity"
+  ],
+  "contact": {},
+  "license": "MIT",
+  "icon": "assets/combat/icon.png",
+  "environment": "server",
+  "entrypoints": {
+    "main": [
+      "com.combat.CombatMod"
+    ]
+  },
+  "mixins": [
+    "combat.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.18.0",
+    "minecraft": ">=26.1",
+    "fabric-api": "*"
+  }
+}

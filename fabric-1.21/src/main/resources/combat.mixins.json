@@ -1,0 +1,16 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.combat.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "ScreenHandlerMixin",
+    "LivingEntityMixin",
+    "AnvilScreenHandlerMixin",
+    "BrewingRecipeRegistryMixin",
+    "ItemCooldownsMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

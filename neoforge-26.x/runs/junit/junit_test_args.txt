@@ -1,0 +1,6 @@
+--version
+26.1.2.76
+--assetIndex
+asset-index
+--assetsDir
+/home/luka/.gradle/caches/minecraft/assets
