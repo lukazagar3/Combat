@@ -36,14 +36,12 @@ public abstract class AnvilInputGui implements MenuProvider {
             }
 
             @Override
-            public void clicked(int slotId, int clickData, net.minecraft.world.inventory.ClickType actionType, Player player) {
+            public void clicked(int slotId, int clickData, net.minecraft.world.inventory.ContainerInput actionType, Player player) {
                 if (slotId == 2) {
                     ItemStack output = getSlot(2).getItem();
-                    if (!output.isEmpty()) {
-                        String input = output.getHoverName().getString();
-                        handleInput(input);
-                        player.closeContainer();
-                    }
+                    ItemStack inputSlot = getSlot(0).getItem();
+                    String inputStr = !output.isEmpty() ? output.getHoverName().getString() : (!inputSlot.isEmpty() ? inputSlot.getHoverName().getString() : "");
+                    handleInput(inputStr);
                 } else {
                     super.clicked(slotId, clickData, actionType, player);
                 }

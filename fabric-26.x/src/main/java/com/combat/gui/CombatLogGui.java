@@ -3,12 +3,12 @@ package com.combat.gui;
 import com.combat.ConfigManager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.ChatFormatting;
-import net.minecraft.world.item.component.LoreComponent;
+import net.minecraft.world.item.component.ItemLore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -23,7 +23,7 @@ public class CombatLogGui extends ChestGui {
     protected void setupItems() {
         inventory.clearContent();
 
-        ItemStack border = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
+        ItemStack border = new ItemStack(Items.GLASS_PANE);
         border.set(DataComponents.CUSTOM_NAME, Component.literal(""));
         for (int i = 0; i < 9; i++) {
             inventory.setItem(i, border);
@@ -39,7 +39,7 @@ public class CombatLogGui extends ChestGui {
         List<Component> logLore = new ArrayList<>();
         logLore.add(Component.literal("Current: " + ConfigManager.getConfig().combatLogSeconds + "s").withStyle(ChatFormatting.GRAY));
         logLore.add(Component.literal("Click to Edit").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
-        logTimer.set(DataComponents.LORE, new LoreComponent(logLore));
+        logTimer.set(DataComponents.LORE, new ItemLore(logLore));
         inventory.setItem(10, logTimer);
 
         boolean ecAllowed = ConfigManager.getConfig().allowEnderchestInCombat;
@@ -49,7 +49,7 @@ public class CombatLogGui extends ChestGui {
         ecLore.add(Component.literal("Status: ").withStyle(ChatFormatting.GRAY)
             .append(ecAllowed ? Component.literal("ENABLED").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD) : Component.literal("DISABLED").withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
         ecLore.add(Component.literal("Click to Toggle").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
-        enderChest.set(DataComponents.LORE, new LoreComponent(ecLore));
+        enderChest.set(DataComponents.LORE, new ItemLore(ecLore));
         inventory.setItem(12, enderChest);
 
         ItemStack immunityTimer = new ItemStack(Items.GOLDEN_APPLE);
@@ -57,12 +57,12 @@ public class CombatLogGui extends ChestGui {
         List<Component> immunityLore = new ArrayList<>();
         immunityLore.add(Component.literal("Current: " + ConfigManager.getConfig().immunitySeconds + "s").withStyle(ChatFormatting.GRAY));
         immunityLore.add(Component.literal("Click to Edit").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
-        immunityTimer.set(DataComponents.LORE, new LoreComponent(immunityLore));
+        immunityTimer.set(DataComponents.LORE, new ItemLore(immunityLore));
         inventory.setItem(14, immunityTimer);
     }
 
     @Override
-    protected void handleSlotClick(int slotId, int clickData, ClickType actionType) {
+    protected void handleSlotClick(int slotId, int clickData, ContainerInput actionType) {
         if (slotId == 18) {
             new CombatMenuGui(player).open();
         } else if (slotId == 10) {

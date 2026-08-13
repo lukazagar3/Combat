@@ -47,7 +47,7 @@ public abstract class ChestGui implements MenuProvider {
             }
 
             @Override
-            public void clicked(int slotId, int clickData, net.minecraft.world.inventory.ClickType actionType, Player player) {
+            public void clicked(int slotId, int clickData, net.minecraft.world.inventory.ContainerInput actionType, Player player) {
                 if (slotId >= 0 && slotId < this.slots.size()) {
                     if (slotId < inventory.getContainerSize()) {
                         handleSlotClick(slotId, clickData, actionType);
@@ -64,5 +64,5 @@ public abstract class ChestGui implements MenuProvider {
     }
 
     protected abstract void setupItems();
-    protected abstract void handleSlotClick(int slotId, int clickData, net.minecraft.world.inventory.ClickType actionType);
+    protected abstract void handleSlotClick(int slotId, int clickData, net.minecraft.world.inventory.ContainerInput actionType);
 }

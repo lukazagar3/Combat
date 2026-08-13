@@ -4,13 +4,13 @@ import com.combat.ConfigManager;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.ChatFormatting;
-import net.minecraft.world.item.component.LoreComponent;
+import net.minecraft.world.item.component.ItemLore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,7 +30,7 @@ public class CooldownsGui extends ChestGui {
     protected void setupItems() {
         inventory.clearContent();
 
-        ItemStack border = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
+        ItemStack border = new ItemStack(Items.GLASS_PANE);
         border.set(DataComponents.CUSTOM_NAME, Component.literal(""));
         for (int i = 0; i < 9; i++) {
             inventory.setItem(i, border);
@@ -45,25 +45,52 @@ public class CooldownsGui extends ChestGui {
             String itemId = targetedItems.get(i);
             double cooldown = ConfigManager.getConfig().itemCooldowns.getOrDefault(itemId, 0.0);
 
-            ItemStack itemStack;
-            try {
-                itemStack = new ItemStack(BuiltInRegistries.ITEM.get(ResourceLocation.parse(itemId)));
-            } catch (Exception e) {
-                itemStack = new ItemStack(Items.TRIDENT);
+            // Get the item, trying netherite_spear first for spear icon
+            net.minecraft.world.item.Item resolvedItem;
+            if ("minecraft:spear".equals(itemId)) {
+                resolvedItem = BuiltInRegistries.ITEM.get(Identifier.parse("minecraft:netherite_spear"))
+                    .map(r -> r.value())
+                    .filter(it -> it != net.minecraft.world.item.Items.AIR)
+                    .orElseGet(() -> BuiltInRegistries.ITEM.get(Identifier.parse("minecraft:spear"))
+                        .map(r -> r.value()).orElse(net.minecraft.world.item.Items.AIR));
+            } else {
+                resolvedItem = BuiltInRegistries.ITEM.get(Identifier.parse(itemId))
+                    .map(r -> r.value()).orElse(net.minecraft.world.item.Items.AIR);
             }
-            itemStack.set(DataComponents.CUSTOM_NAME, Component.literal(itemId).withStyle(ChatFormatting.GOLD));
+
+            ItemStack itemStack;
+            if (resolvedItem == net.minecraft.world.item.Items.AIR) {
+                // Fallback icon if spear isn't in registry
+                itemStack = switch (itemId) {
+                    case "minecraft:spear" -> new ItemStack(Items.NETHERITE_SWORD);
+                    default -> new ItemStack(Items.STICK);
+                };
+            } else {
+                itemStack = new ItemStack(resolvedItem);
+            }
+
+            // Friendly display names
+            String displayName = switch (itemId) {
+                case "minecraft:ender_pearl" -> "Ender Pearl";
+                case "minecraft:mace" -> "Mace";
+                case "minecraft:trident" -> "Trident";
+                case "minecraft:spear" -> "Spear (Lunge)";
+                default -> itemId.replace("minecraft:", "");
+            };
+
+            itemStack.set(DataComponents.CUSTOM_NAME, Component.literal(displayName).withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
 
             List<Component> loreLines = new ArrayList<>();
             loreLines.add(Component.literal("Cooldown: " + cooldown + "s").withStyle(ChatFormatting.GRAY));
             loreLines.add(Component.literal("Click to Change").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
-            itemStack.set(DataComponents.LORE, new LoreComponent(loreLines));
+            itemStack.set(DataComponents.LORE, new ItemLore(loreLines));
 
             inventory.setItem(10 + i, itemStack);
         }
     }
 
     @Override
-    protected void handleSlotClick(int slotId, int clickData, ClickType actionType) {
+    protected void handleSlotClick(int slotId, int clickData, ContainerInput actionType) {
         if (slotId == 18) {
             new CombatMenuGui(player).open();
         } else if (slotId >= 10 && slotId < 10 + targetedItems.size()) {

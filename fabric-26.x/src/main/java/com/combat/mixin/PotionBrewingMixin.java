@@ -7,7 +7,7 @@ import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potion;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.resources.ResourceLocation;
+import net.minecraft.resources.Identifier;
 import net.minecraft.core.Holder;
 import net.minecraft.world.effect.MobEffectInstance;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,8 +20,8 @@ import java.util.Optional;
 @Mixin(PotionBrewing.class)
 public class PotionBrewingMixin {
 
-    @Inject(method = "hasRecipe", at = @At("RETURN"), cancellable = true)
-    private void onHasRecipe(ItemStack input, ItemStack ingredient, CallbackInfoReturnable<Boolean> cir) {
+    @Inject(method = "hasMix", at = @At("RETURN"), cancellable = true)
+    private void onHasMix(ItemStack input, ItemStack ingredient, CallbackInfoReturnable<Boolean> cir) {
         if (!cir.getReturnValue()) return;
 
         PotionBrewing manager = (PotionBrewing)(Object)this;
@@ -34,7 +34,7 @@ public class PotionBrewingMixin {
             if (potionOpt.isPresent()) {
                 Potion potion = potionOpt.get().value();
 
-                ResourceLocation potionId = potionOpt.get().unwrapKey().map(net.minecraft.resources.ResourceKey::location).orElse(null);
+                net.minecraft.resources.Identifier potionId = potionOpt.get().unwrapKey().map(net.minecraft.resources.ResourceKey::identifier).orElse(null);
                 if (potionId != null) {
                     String idStr = potionId.toString();
                     Integer limit = ConfigManager.getConfig().potionLimits.get(idStr);
@@ -45,7 +45,7 @@ public class PotionBrewingMixin {
                 }
 
                 for (MobEffectInstance effect : potion.getEffects()) {
-                    ResourceLocation effectId = BuiltInRegistries.MOB_EFFECT.getKey(effect.getEffect());
+                    net.minecraft.resources.Identifier effectId = BuiltInRegistries.MOB_EFFECT.getKey(effect.getEffect().value());
                     if (effectId != null) {
                         String effectIdStr = effectId.toString();
                         Integer limit = ConfigManager.getConfig().potionLimits.get(effectIdStr);
@@ -60,7 +60,7 @@ public class PotionBrewingMixin {
             }
 
             for (MobEffectInstance effect : potionContents.customEffects()) {
-                ResourceLocation effectId = BuiltInRegistries.MOB_EFFECT.getKey(effect.getEffect());
+                net.minecraft.resources.Identifier effectId = BuiltInRegistries.MOB_EFFECT.getKey(effect.getEffect().value());
                 if (effectId != null) {
                     String effectIdStr = effectId.toString();
                     Integer limit = ConfigManager.getConfig().potionLimits.get(effectIdStr);

@@ -1,6 +1,8 @@
 package com.combat.gui;
 
 import com.combat.ConfigManager;
+import com.combat.PlayerData;
+import com.combat.DataManager;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.screen.slot.SlotActionType;
@@ -21,7 +23,6 @@ public class RankedGui extends ChestGui {
     protected void setupItems() {
         inventory.clear();
 
-        // Border
         ItemStack border = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
         border.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal(""));
         for (int i = 0; i < 9; i++) {
@@ -29,31 +30,33 @@ public class RankedGui extends ChestGui {
             inventory.setStack(18 + i, border);
         }
 
-        // Back Arrow
         ItemStack back = new ItemStack(Items.ARROW);
         back.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Back to Main Menu").formatted(Formatting.YELLOW));
         inventory.setStack(18, back);
 
-        // Render positions #1 to #10
-        // We will put them in slots 9 to 17 (which is 9 slots, positions 1 to 9), and slot 26 for position 10.
-        // Wait, slot 9 to 17 is 9 slots. Position 10 can be in slot 19 (next row, after back arrow).
-        // Let's place them neatly:
-        // Row 1: #1 to #9 -> slots 9 to 17
-        // Row 2: #10 -> slot 22 (centered in bottom row next to back)
+        ItemStack toggle = new ItemStack(ConfigManager.getConfig().rankedSystemEnabled ? Items.LIME_DYE : Items.GRAY_DYE);
+        toggle.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Ranked System: " + 
+            (ConfigManager.getConfig().rankedSystemEnabled ? "ENABLED" : "DISABLED"))
+            .formatted(ConfigManager.getConfig().rankedSystemEnabled ? Formatting.GREEN : Formatting.RED, Formatting.BOLD));
+        List<Text> toggleLore = new ArrayList<>();
+        toggleLore.add(Text.literal("Click to toggle ranked system").formatted(Formatting.YELLOW));
+        toggle.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(toggleLore));
+        inventory.setStack(26, toggle);
+
         for (int pos = 1; pos <= 10; pos++) {
             int slot = (pos <= 9) ? (8 + pos) : 22;
-            int hpBoost = ConfigManager.getConfig().rankHealthBoosts.getOrDefault(pos, 0);
+            int targetHealth = Math.max(2, 40 - 2 * (pos - 1));
             List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new ArrayList<>());
 
             ItemStack skull = new ItemStack(Items.PLAYER_HEAD);
             skull.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, 
                 Text.literal("Rank Position #" + pos).formatted(Formatting.GOLD, Formatting.BOLD));
-            
-            List<Text> lore = new ArrayList<>();
-            lore.add(Text.literal("Extra Health: +" + (hpBoost / 2.0) + " hearts (" + hpBoost + " HP)").formatted(Formatting.GRAY));
-            lore.add(Text.literal("Potion Effects: " + (effects.isEmpty() ? "None" : String.join(", ", effects))).formatted(Formatting.GRAY));
-            lore.add(Text.literal("Click to Configure").formatted(Formatting.YELLOW, Formatting.ITALIC));
-            skull.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(lore));
+
+            List<Text> loreLines = new ArrayList<>();
+            loreLines.add(Text.literal("Dynamic Health: " + (targetHealth / 2.0) + " hearts (" + targetHealth + " HP)").formatted(Formatting.GRAY));
+            loreLines.add(Text.literal("Potion Effects: " + (effects.isEmpty() ? "None" : String.join(", ", effects))).formatted(Formatting.GRAY));
+            loreLines.add(Text.literal("Click to Configure Effects").formatted(Formatting.YELLOW, Formatting.ITALIC));
+            skull.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(loreLines));
 
             inventory.setStack(slot, skull);
         }
@@ -66,6 +69,29 @@ public class RankedGui extends ChestGui {
             return;
         }
 
+        if (slotId == 26) {
+            ConfigManager.getConfig().rankedSystemEnabled = !ConfigManager.getConfig().rankedSystemEnabled;
+            ConfigManager.save();
+            if (com.combat.CombatMod.serverInstance != null) {
+                com.combat.CombatMod.serverInstance.getPlayerManager().getPlayerList().forEach(p -> {
+                    net.minecraft.scoreboard.Scoreboard scoreboard = com.combat.CombatMod.serverInstance.getScoreboard();
+                    String teamName = "c_team_" + p.getUuid().toString().substring(0, 12);
+                    net.minecraft.scoreboard.Team team = scoreboard.getTeam(teamName);
+                    if (team != null) {
+                        if (!ConfigManager.getConfig().rankedSystemEnabled) {
+                            team.setPrefix(Text.literal("").formatted(Formatting.GOLD));
+                        } else {
+                            PlayerData data = DataManager.getOrCreatePlayerData(p.getUuid());
+                            String prefixStr = data.rankPosition == -1 ? "[Unranked] " : "[Rank #" + data.rankPosition + "] ";
+                            team.setPrefix(Text.literal(prefixStr).formatted(Formatting.GOLD));
+                        }
+                    }
+                });
+            }
+            setupItems();
+            return;
+        }
+
         int selectedPos = -1;
         if (slotId >= 9 && slotId <= 17) {
             selectedPos = slotId - 8;
@@ -75,26 +101,22 @@ public class RankedGui extends ChestGui {
 
         if (selectedPos != -1) {
             final int pos = selectedPos;
-            // Open submenu for this position
             new ChestGui(player, "Buffs for Position #" + pos, 1) {
                 @Override
                 protected void setupItems() {
-                    // Back
                     ItemStack backArrow = new ItemStack(Items.ARROW);
                     backArrow.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Back to Ranks").formatted(Formatting.YELLOW));
                     inventory.setStack(0, backArrow);
 
-                    // Health Boost config (Apple)
-                    int currentHp = ConfigManager.getConfig().rankHealthBoosts.getOrDefault(pos, 0);
-                    ItemStack hpItem = new ItemStack(Items.RED_DYE);
-                    hpItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Max Health Boost").formatted(Formatting.RED));
+                    int targetHealth = Math.max(2, 40 - 2 * (pos - 1));
+                    ItemStack hpItem = new ItemStack(Items.APPLE);
+                    hpItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Dynamic Max Health").formatted(Formatting.RED));
                     List<Text> hpLore = new ArrayList<>();
-                    hpLore.add(Text.literal("Current: +" + currentHp + " HP").formatted(Formatting.GRAY));
-                    hpLore.add(Text.literal("Click to Edit").formatted(Formatting.YELLOW));
+                    hpLore.add(Text.literal("Dynamic Health: " + (targetHealth / 2.0) + " hearts (" + targetHealth + " HP)").formatted(Formatting.GRAY));
+                    hpLore.add(Text.literal("Automatically calculated based on rank").formatted(Formatting.DARK_GRAY));
                     hpItem.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(hpLore));
                     inventory.setStack(2, hpItem);
 
-                    // Speed effect toggle (Sugar)
                     List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new ArrayList<>());
                     boolean hasSpeed = effects.contains("speed");
                     ItemStack speedItem = new ItemStack(Items.SUGAR);
@@ -106,7 +128,6 @@ public class RankedGui extends ChestGui {
                     speedItem.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(speedLore));
                     inventory.setStack(4, speedItem);
 
-                    // Strength effect toggle (Blaze Powder)
                     boolean hasStrength = effects.contains("strength");
                     ItemStack strengthItem = new ItemStack(Items.BLAZE_POWDER);
                     strengthItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Strength Effect").formatted(Formatting.DARK_RED));
@@ -122,25 +143,6 @@ public class RankedGui extends ChestGui {
                 protected void handleSlotClick(int subSlotId, int clickData, SlotActionType actionType) {
                     if (subSlotId == 0) {
                         new RankedGui(player).open();
-                    } else if (subSlotId == 2) {
-                        int currentHp = ConfigManager.getConfig().rankHealthBoosts.getOrDefault(pos, 0);
-                        new AnvilInputGui(player, "Set Extra Max HP (e.g. 40)", String.valueOf(currentHp)) {
-                            @Override
-                            protected void handleInput(String input) {
-                                try {
-                                    int hp = Integer.parseInt(input.trim());
-                                    if (hp < 0) {
-                                        player.sendMessage(Text.literal("HP Boost cannot be negative!").formatted(Formatting.RED), false);
-                                    } else {
-                                        ConfigManager.getConfig().rankHealthBoosts.put(pos, hp);
-                                        ConfigManager.save();
-                                    }
-                                } catch (NumberFormatException e) {
-                                    player.sendMessage(Text.literal("Invalid HP value!").formatted(Formatting.RED), false);
-                                }
-                                open(); // Reopen submenu
-                            }
-                        }.open();
                     } else if (subSlotId == 4) {
                         List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new ArrayList<>());
                         if (effects.contains("speed")) {
@@ -149,7 +151,7 @@ public class RankedGui extends ChestGui {
                             effects.add("speed");
                         }
                         ConfigManager.save();
-                        setupItems(); // Refresh submenu
+                        setupItems();
                     } else if (subSlotId == 6) {
                         List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new ArrayList<>());
                         if (effects.contains("strength")) {
@@ -158,7 +160,7 @@ public class RankedGui extends ChestGui {
                             effects.add("strength");
                         }
                         ConfigManager.save();
-                        setupItems(); // Refresh submenu
+                        setupItems();
                     }
                 }
             }.open();

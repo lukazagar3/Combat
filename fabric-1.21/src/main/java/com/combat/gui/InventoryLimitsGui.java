@@ -39,6 +39,15 @@ public class InventoryLimitsGui extends ChestGui {
         back.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Back to Main Menu").formatted(Formatting.YELLOW));
         inventory.setStack(27, back);
 
+        boolean combatOnly = ConfigManager.getConfig().limitsOnlyInCombat;
+        ItemStack modeToggle = new ItemStack(combatOnly ? Items.REDSTONE : Items.LIME_DYE);
+        modeToggle.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Item Limits Mode: " + (combatOnly ? "ONLY IN COMBAT" : "ALWAYS ACTIVE"))
+            .formatted(combatOnly ? Formatting.GOLD : Formatting.GREEN, Formatting.BOLD));
+        List<Text> modeLore = new ArrayList<>();
+        modeLore.add(Text.literal("Click to switch mode").formatted(Formatting.YELLOW, Formatting.ITALIC));
+        modeToggle.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(modeLore));
+        inventory.setStack(31, modeToggle);
+
         // Add Button
         ItemStack add = new ItemStack(Items.EMERALD);
         add.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Add New Item Limit").formatted(Formatting.GREEN));
@@ -71,28 +80,13 @@ public class InventoryLimitsGui extends ChestGui {
     protected void handleSlotClick(int slotId, int clickData, SlotActionType actionType) {
         if (slotId == 27) {
             new CombatMenuGui(player).open();
+        } else if (slotId == 31) {
+            ConfigManager.getConfig().limitsOnlyInCombat = !ConfigManager.getConfig().limitsOnlyInCombat;
+            ConfigManager.save();
+            player.sendMessage(Text.literal("Item Limits Mode set to: " + (ConfigManager.getConfig().limitsOnlyInCombat ? "ONLY IN COMBAT" : "ALWAYS ACTIVE")).formatted(Formatting.GREEN), false);
+            new InventoryLimitsGui(player).open();
         } else if (slotId == 35) {
-            // Open Anvil input for item ID
-            new AnvilInputGui(player, "Enter Item ID", "minecraft:cobblestone") {
-                @Override
-                protected void handleInput(String inputItemId) {
-                    new AnvilInputGui(player, "Enter Limit Amount", "64") {
-                        @Override
-                        protected void handleInput(String inputAmount) {
-                            try {
-                                int amount = Integer.parseInt(inputAmount.trim());
-                                ConfigManager.getConfig().itemLimits.put(inputItemId.trim(), amount);
-                                ConfigManager.save();
-                                player.sendMessage(Text.literal("Set limit for " + inputItemId + " to " + amount).formatted(Formatting.GREEN), false);
-                            } catch (NumberFormatException e) {
-                                player.sendMessage(Text.literal("Invalid amount!").formatted(Formatting.RED), false);
-                            }
-                            // Reopen limits screen
-                            new InventoryLimitsGui(player).open();
-                        }
-                    }.open();
-                }
-            }.open();
+            new ItemSelectorGui(player, 0, "", false).open();
         } else if (slotId >= 9 && slotId < 9 + itemIds.size()) {
             String itemId = itemIds.get(slotId - 9);
             // Open Edit/Remove Confirmation Screen

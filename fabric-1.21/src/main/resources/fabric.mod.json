@@ -10,7 +10,7 @@
   "contact": {},
   "license": "MIT",
   "icon": "assets/combat/icon.png",
-  "environment": "server",
+  "environment": "*",
   "entrypoints": {
     "main": [
       "com.combat.CombatMod"

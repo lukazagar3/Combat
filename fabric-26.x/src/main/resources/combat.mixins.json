@@ -3,12 +3,16 @@
   "minVersion": "0.8",
   "package": "com.combat.mixin",
   "compatibilityLevel": "JAVA_25",
+  "refmap": "combat-refmap.json",
   "mixins": [
     "AbstractContainerMenuMixin",
     "LivingEntityMixin",
     "AnvilMenuMixin",
     "PotionBrewingMixin",
-    "ItemCooldownsMixin"
+    "ItemCooldownsMixin",
+    "PlayerMixin",
+    "TridentItemMixin",
+    "ItemEntityMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -4,7 +4,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.component.DataComponents;
@@ -18,7 +18,7 @@ public class CombatMenuGui extends ChestGui {
 
     @Override
     protected void setupItems() {
-        ItemStack border = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
+        ItemStack border = new ItemStack(Items.GLASS_PANE);
         border.set(DataComponents.CUSTOM_NAME, Component.literal(""));
         for (int i = 0; i < 9; i++) {
             inventory.setItem(i, border);
@@ -37,11 +37,11 @@ public class CombatMenuGui extends ChestGui {
         combatLog.set(DataComponents.CUSTOM_NAME, Component.literal("Combat Log Settings").withStyle(ChatFormatting.RED, ChatFormatting.BOLD));
         inventory.setItem(12, combatLog);
 
-        ItemStack ranked = new ItemStack(Items.GOLDEN_HELMET);
+        ItemStack ranked = new ItemStack(Items.NETHER_STAR);
         ranked.set(DataComponents.CUSTOM_NAME, Component.literal("Ranked System").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
         inventory.setItem(13, ranked);
 
-        ItemStack worldLimits = new ItemStack(Items.NETHER_STAR);
+        ItemStack worldLimits = new ItemStack(Items.MACE);
         worldLimits.set(DataComponents.CUSTOM_NAME, Component.literal("World Item Limits").withStyle(ChatFormatting.YELLOW, ChatFormatting.BOLD));
         inventory.setItem(14, worldLimits);
 
@@ -49,13 +49,13 @@ public class CombatMenuGui extends ChestGui {
         enchantLimits.set(DataComponents.CUSTOM_NAME, Component.literal("Enchant Level Limits").withStyle(ChatFormatting.LIGHT_PURPLE, ChatFormatting.BOLD));
         inventory.setItem(15, enchantLimits);
 
-        ItemStack strengthPotion = PotionContents.createItemStack(Items.POTION, Potions.STRENGTH);
+        ItemStack strengthPotion = new ItemStack(Items.GLASS_BOTTLE);
         strengthPotion.set(DataComponents.CUSTOM_NAME, Component.literal("Potion Control System").withStyle(ChatFormatting.DARK_RED, ChatFormatting.BOLD));
         inventory.setItem(16, strengthPotion);
     }
 
     @Override
-    protected void handleSlotClick(int slotId, int clickData, ClickType actionType) {
+    protected void handleSlotClick(int slotId, int clickData, ContainerInput actionType) {
         if (slotId == 10) {
             new InventoryLimitsGui(player).open();
         } else if (slotId == 11) {
@@ -67,7 +67,7 @@ public class CombatMenuGui extends ChestGui {
         } else if (slotId == 14) {
             new WorldLimitsGui(player).open();
         } else if (slotId == 15) {
-            new EnchantLimitsGui(player).open();
+            new EnchantLimitsGui(player, 0, "").open();
         } else if (slotId == 16) {
             new PotionControlGui(player).open();
         }

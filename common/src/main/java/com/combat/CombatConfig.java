@@ -8,6 +8,8 @@ public class CombatConfig {
     public int combatLogSeconds = 15;
     public int immunitySeconds = 60;
     public boolean allowEnderchestInCombat = false;
+    public boolean limitsOnlyInCombat = false; // false = ALWAYS ON, true = ONLY IN COMBAT
+    public boolean rankedSystemEnabled = true;
     public Map<String, Integer> itemLimits = new HashMap<>(); // item_id -> limit
     public Map<String, Double> itemCooldowns = new HashMap<>(); // item_id -> seconds
     public Map<String, Integer> enchantLimits = new HashMap<>(); // enchant_id -> max level

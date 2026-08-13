@@ -5,3 +5,4 @@ scratch/
 *.local
 out/
 bin/
+*.hprof

@@ -44,12 +44,12 @@ public class CombatMenuGui extends ChestGui {
         inventory.setStack(12, combatLog);
 
         // Ranked System
-        ItemStack ranked = new ItemStack(Items.GOLDEN_HELMET);
+        ItemStack ranked = new ItemStack(Items.NETHER_STAR);
         ranked.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Ranked System").formatted(Formatting.GOLD, Formatting.BOLD));
         inventory.setStack(13, ranked);
 
         // World Limits
-        ItemStack worldLimits = new ItemStack(Items.NETHER_STAR);
+        ItemStack worldLimits = new ItemStack(Items.MACE);
         worldLimits.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("World Item Limits").formatted(Formatting.YELLOW, Formatting.BOLD));
         inventory.setStack(14, worldLimits);
 
@@ -58,8 +58,8 @@ public class CombatMenuGui extends ChestGui {
         enchantLimits.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Enchant Level Limits").formatted(Formatting.LIGHT_PURPLE, Formatting.BOLD));
         inventory.setStack(15, enchantLimits);
 
-        // Potion Control (Strength Potion Icon)
-        ItemStack strengthPotion = PotionContentsComponent.createStack(Items.POTION, Potions.STRENGTH);
+        // Potion Control (Glass Bottle Icon - no extra tooltip)
+        ItemStack strengthPotion = new ItemStack(Items.GLASS_BOTTLE);
         strengthPotion.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Potion Control System").formatted(Formatting.DARK_RED, Formatting.BOLD));
         inventory.setStack(16, strengthPotion);
     }
@@ -77,7 +77,7 @@ public class CombatMenuGui extends ChestGui {
         } else if (slotId == 14) {
             new WorldLimitsGui(player).open();
         } else if (slotId == 15) {
-            new EnchantLimitsGui(player).open();
+            new EnchantLimitsGui(player, 0, "").open();
         } else if (slotId == 16) {
             new PotionControlGui(player).open();
         }

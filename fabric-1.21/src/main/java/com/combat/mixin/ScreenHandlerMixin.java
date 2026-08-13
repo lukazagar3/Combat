@@ -10,8 +10,10 @@ import net.minecraft.screen.slot.Slot;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
+import net.minecraft.util.collection.DefaultedList;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import net.minecraft.util.Formatting;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.List;
@@ -19,60 +21,80 @@ import java.util.Map;
 
 @Mixin(ScreenHandler.class)
 public abstract class ScreenHandlerMixin {
-    @Shadow public abstract List<Slot> getSlots();
+    @Shadow public DefaultedList<Slot> slots;
     @Shadow public abstract ItemStack getCursorStack();
 
     @Inject(method = "onSlotClick", at = @At("HEAD"), cancellable = true)
     private void preSlotClick(int slotId, int clickData, net.minecraft.screen.slot.SlotActionType actionType, PlayerEntity player, CallbackInfo ci) {
         if (!(player instanceof ServerPlayerEntity serverPlayer)) return;
+        if (slotId < 0 || slotId >= this.slots.size()) return;
 
         ScreenHandler handler = (ScreenHandler)(Object)this;
-        boolean isEnderChest = false;
-        for (Slot slot : this.getSlots()) {
-            if (slot.inventory instanceof net.minecraft.inventory.EnderChestInventory) {
-                isEnderChest = true;
-                break;
+        Slot targetSlot = this.slots.get(slotId);
+        boolean isExternalSlot = !(targetSlot.inventory instanceof net.minecraft.entity.player.PlayerInventory);
+
+        ItemStack targetItem = targetSlot.getStack();
+        ItemStack carriedItem = this.getCursorStack();
+
+        // Check if handler is a workstation (Anvil, Smithing, Grindstone, Crafting, Enchantment)
+        boolean isWorkstation = handler instanceof net.minecraft.screen.ForgingScreenHandler ||
+                                handler instanceof net.minecraft.screen.AnvilScreenHandler ||
+                                handler instanceof net.minecraft.screen.CraftingScreenHandler ||
+                                handler instanceof net.minecraft.screen.SmithingScreenHandler ||
+                                handler instanceof net.minecraft.screen.GrindstoneScreenHandler ||
+                                handler instanceof net.minecraft.screen.EnchantmentScreenHandler ||
+                                handler instanceof net.minecraft.screen.PlayerScreenHandler;
+
+        // 1. Check taking/crafting items into player inventory (limit checks)
+        if (isExternalSlot && !targetItem.isEmpty()) {
+            boolean isForgingResult = (handler instanceof net.minecraft.screen.ForgingScreenHandler) && targetSlot.getIndex() == 2;
+            if (!isForgingResult) {
+                String itemId = Registries.ITEM.getId(targetItem.getItem()).toString();
+                if (actionType == net.minecraft.screen.slot.SlotActionType.QUICK_MOVE ||
+                   (actionType == net.minecraft.screen.slot.SlotActionType.PICKUP && carriedItem.isEmpty()) ||
+                    actionType == net.minecraft.screen.slot.SlotActionType.SWAP) {
+                    if (com.combat.CombatMod.isItemLimitExceeded(serverPlayer, itemId, targetItem.getCount())) {
+                        serverPlayer.sendMessage(net.minecraft.text.Text.literal("Limit reached for " + itemId.replace("minecraft:", "") + "! Cannot acquire more.").formatted(Formatting.RED), false);
+                        ci.cancel();
+                        handler.sendContentUpdates();
+                        return;
+                    }
+                }
             }
         }
 
-        if (isEnderChest) {
-            java.util.Set<String> worldLimitedItems = ConfigManager.getConfig().worldLimits.keySet();
-            boolean attemptingToPutInEC = false;
-            ItemStack stackToMove = ItemStack.EMPTY;
-
-            if (actionType == net.minecraft.screen.slot.SlotActionType.QUICK_MOVE) {
-                if (slotId >= 0 && slotId < this.getSlots().size()) {
-                    Slot slot = this.getSlots().get(slotId);
-                    if (!(slot.inventory instanceof net.minecraft.inventory.EnderChestInventory)) {
-                        stackToMove = slot.getStack();
-                        attemptingToPutInEC = true;
+        // 2. Check placing world-limited items into external STORAGE containers (chests, ender chest, barrels, etc.)
+        // Workstations (Anvils, Crafting, Smithing) are NOT storage containers!
+        if (!isWorkstation) {
+            java.util.Map<String, com.combat.CombatConfig.WorldLimitedItem> worldLimits = com.combat.ConfigManager.getConfig().worldLimits;
+            if (!worldLimits.isEmpty()) {
+                if (isExternalSlot && !carriedItem.isEmpty()) {
+                    String itemId = Registries.ITEM.getId(carriedItem.getItem()).toString();
+                    com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
+                    if (wli != null && wli.maxCount > 0) {
+                        serverPlayer.sendMessage(net.minecraft.text.Text.literal("World-limited items cannot be stored in containers!").formatted(Formatting.RED), false);
+                        ci.cancel();
+                        handler.sendContentUpdates();
+                        return;
                     }
-                }
-            } else if (actionType == net.minecraft.screen.slot.SlotActionType.PICKUP) {
-                if (slotId >= 0 && slotId < this.getSlots().size()) {
-                    Slot slot = this.getSlots().get(slotId);
-                    if (slot.inventory instanceof net.minecraft.inventory.EnderChestInventory) {
-                        stackToMove = this.getCursorStack();
-                        attemptingToPutInEC = true;
+                } else if (!isExternalSlot && actionType == net.minecraft.screen.slot.SlotActionType.QUICK_MOVE && !targetItem.isEmpty()) {
+                    String itemId = Registries.ITEM.getId(targetItem.getItem()).toString();
+                    com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
+                    if (wli != null && wli.maxCount > 0) {
+                        boolean hasExternal = false;
+                        for (Slot s : this.slots) {
+                            if (!(s.inventory instanceof net.minecraft.entity.player.PlayerInventory)) {
+                                hasExternal = true;
+                                break;
+                            }
+                        }
+                        if (hasExternal) {
+                            serverPlayer.sendMessage(net.minecraft.text.Text.literal("World-limited items cannot be stored in containers!").formatted(Formatting.RED), false);
+                            ci.cancel();
+                            handler.sendContentUpdates();
+                            return;
+                        }
                     }
-                }
-            } else if (actionType == net.minecraft.screen.slot.SlotActionType.SWAP) {
-                if (slotId >= 0 && slotId < this.getSlots().size()) {
-                    Slot slot = this.getSlots().get(slotId);
-                    if (slot.inventory instanceof net.minecraft.inventory.EnderChestInventory) {
-                        int hotbarSlot = clickData;
-                        stackToMove = serverPlayer.getInventory().getStack(hotbarSlot);
-                        attemptingToPutInEC = true;
-                    }
-                }
-            }
-
-            if (attemptingToPutInEC && !stackToMove.isEmpty()) {
-                String itemId = Registries.ITEM.getId(stackToMove.getItem()).toString();
-                if (worldLimitedItems.contains(itemId)) {
-                    serverPlayer.sendMessage(net.minecraft.text.Text.literal("You cannot put world-limited items in an Ender Chest!").formatted(net.minecraft.util.Formatting.RED), false);
-                    ci.cancel();
-                    handler.sendContentUpdates();
                 }
             }
         }
@@ -81,25 +103,20 @@ public abstract class ScreenHandlerMixin {
     @Inject(method = "onSlotClick", at = @At("TAIL"))
     private void postSlotClick(int slotId, int clickData, net.minecraft.screen.slot.SlotActionType actionType, PlayerEntity player, CallbackInfo ci) {
         if (!(player instanceof ServerPlayerEntity serverPlayer)) return;
-
-        // Enforce inventory limit for all configured items
-        for (Map.Entry<String, Integer> entry : ConfigManager.getConfig().itemLimits.entrySet()) {
-            enforceInventoryLimit(serverPlayer, entry.getKey(), entry.getValue());
-        }
+        com.combat.CombatMod.checkAndEnforceItemLimits(serverPlayer);
     }
 
     private void enforceInventoryLimit(ServerPlayerEntity player, String itemId, int limit) {
         int total = 0;
-        for (int i = 0; i < player.getInventory().main.size(); i++) {
-            ItemStack stack = player.getInventory().main.get(i);
+        for (int i = 0; i < 36; i++) {
+            ItemStack stack = player.getInventory().getStack(i);
             if (Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) {
                 total += stack.getCount();
             }
         }
-        for (ItemStack stack : player.getInventory().offHand) {
-            if (Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) {
-                total += stack.getCount();
-            }
+        ItemStack offhandStack = player.getInventory().getStack(40);
+        if (Registries.ITEM.getId(offhandStack.getItem()).toString().equals(itemId)) {
+            total += offhandStack.getCount();
         }
 
         if (total > limit) {
@@ -107,14 +124,14 @@ public abstract class ScreenHandlerMixin {
             int toRemove = excess;
 
             // Remove excess from player inventory
-            for (int i = player.getInventory().main.size() - 1; i >= 0; i--) {
+            for (int i = 35; i >= 0; i--) {
                 if (excess <= 0) break;
-                ItemStack stack = player.getInventory().main.get(i);
+                ItemStack stack = player.getInventory().getStack(i);
                 if (Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) {
                     int count = stack.getCount();
                     if (count <= excess) {
                         excess -= count;
-                        player.getInventory().main.set(i, ItemStack.EMPTY);
+                        player.getInventory().setStack(i, ItemStack.EMPTY);
                     } else {
                         stack.setCount(count - excess);
                         excess = 0;
@@ -123,18 +140,14 @@ public abstract class ScreenHandlerMixin {
             }
 
             if (excess > 0) {
-                for (int i = 0; i < player.getInventory().offHand.size(); i++) {
-                    if (excess <= 0) break;
-                    ItemStack stack = player.getInventory().offHand.get(i);
-                    if (Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) {
-                        int count = stack.getCount();
-                        if (count <= excess) {
-                            excess -= count;
-                            player.getInventory().offHand.set(i, ItemStack.EMPTY);
-                        } else {
-                            stack.setCount(count - excess);
-                            excess = 0;
-                        }
+                if (Registries.ITEM.getId(offhandStack.getItem()).toString().equals(itemId)) {
+                    int count = offhandStack.getCount();
+                    if (count <= excess) {
+                        excess -= count;
+                        player.getInventory().setStack(40, ItemStack.EMPTY);
+                    } else {
+                        offhandStack.setCount(count - excess);
+                        excess = 0;
                     }
                 }
             }

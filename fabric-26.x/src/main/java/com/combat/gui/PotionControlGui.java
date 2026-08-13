@@ -7,13 +7,12 @@ import net.minecraft.world.item.alchemy.PotionContents;
 import net.minecraft.world.item.alchemy.Potions;
 import net.minecraft.world.item.alchemy.Potion;
 import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.inventory.ClickType;
+import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.core.component.DataComponents;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.ChatFormatting;
-import net.minecraft.world.item.component.LoreComponent;
+import net.minecraft.world.item.component.ItemLore;
 import net.minecraft.core.Holder;
 
 import java.util.ArrayList;
@@ -51,7 +50,7 @@ public class PotionControlGui extends ChestGui {
     protected void setupItems() {
         inventory.clearContent();
 
-        ItemStack border = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
+        ItemStack border = new ItemStack(Items.GLASS_PANE);
         border.set(DataComponents.CUSTOM_NAME, Component.literal(""));
         for (int i = 0; i < 9; i++) {
             inventory.setItem(i, border);
@@ -98,7 +97,7 @@ public class PotionControlGui extends ChestGui {
                 loreLines.add(Component.literal("Max Allowed Level: " + limit).withStyle(ChatFormatting.GRAY));
             }
             loreLines.add(Component.literal("Click to Configure").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
-            potionStack.set(DataComponents.LORE, new LoreComponent(loreLines));
+            potionStack.set(DataComponents.LORE, new net.minecraft.world.item.component.ItemLore(loreLines));
 
             inventory.setItem(slot, potionStack);
             slot++;
@@ -106,7 +105,7 @@ public class PotionControlGui extends ChestGui {
     }
 
     @Override
-    protected void handleSlotClick(int slotId, int clickData, ClickType actionType) {
+    protected void handleSlotClick(int slotId, int clickData, ContainerInput actionType) {
         if (slotId == 27) {
             new CombatMenuGui(player).open();
             return;
@@ -158,14 +157,14 @@ public class PotionControlGui extends ChestGui {
                     int currentLimit = ConfigManager.getConfig().potionLimits.getOrDefault(potionId, 2);
                     boolean isBrewingDisabled = (currentLimit == -1);
 
-                    ItemStack toggleItem = new ItemStack(isBrewingDisabled ? Items.GREEN_STAINED_GLASS_PANE : Items.RED_STAINED_GLASS_PANE);
+                    ItemStack toggleItem = new ItemStack(isBrewingDisabled ? Items.EMERALD : Items.REDSTONE);
                     toggleItem.set(DataComponents.CUSTOM_NAME, 
                         isBrewingDisabled ? Component.literal("Enable Brewing").withStyle(ChatFormatting.GREEN) : Component.literal("Disable Brewing").withStyle(ChatFormatting.RED));
                     List<Component> toggleLore = new ArrayList<>();
                     toggleLore.add(Component.literal("Current Brewing Status: ").withStyle(ChatFormatting.GRAY)
                         .append(isBrewingDisabled ? Component.literal("DISABLED").withStyle(ChatFormatting.RED, ChatFormatting.BOLD) : Component.literal("ENABLED").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD)));
                     toggleLore.add(Component.literal("Click to Toggle").withStyle(ChatFormatting.YELLOW));
-                    toggleItem.set(DataComponents.LORE, new LoreComponent(toggleLore));
+                    toggleItem.set(DataComponents.LORE, new ItemLore(toggleLore));
                     inventory.setItem(2, toggleItem);
 
                     ItemStack maxLevelItem = new ItemStack(Items.GLOWSTONE_DUST);
@@ -173,12 +172,12 @@ public class PotionControlGui extends ChestGui {
                     List<Component> maxLevelLore = new ArrayList<>();
                     maxLevelLore.add(Component.literal("Current Limit: " + (isBrewingDisabled ? "N/A (Disabled)" : String.valueOf(currentLimit))).withStyle(ChatFormatting.GRAY));
                     maxLevelLore.add(Component.literal("Click to Edit").withStyle(ChatFormatting.YELLOW));
-                    maxLevelItem.set(DataComponents.LORE, new LoreComponent(maxLevelLore));
+                    maxLevelItem.set(DataComponents.LORE, new ItemLore(maxLevelLore));
                     inventory.setItem(6, maxLevelItem);
                 }
 
                 @Override
-                protected void handleSlotClick(int subSlotId, int clickData, ClickType actionType) {
+                protected void handleSlotClick(int subSlotId, int clickData, net.minecraft.world.inventory.ContainerInput actionType) {
                     if (subSlotId == 0) {
                         new PotionControlGui(player).open();
                     } else if (subSlotId == 2) {

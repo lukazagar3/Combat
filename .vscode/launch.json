@@ -45,7 +45,7 @@
         "--add-exports",
         "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
         "-Dneoforge.enableGameTest\u003dtrue",
-        "-DlegacyClassPath.file\u003d/home/luka/mc-bridge/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathClient/classpath.txt",
+        "-DlegacyClassPath.file\u003d/home/luka/Combat/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathClient/classpath.txt",
         "-DignoreList\u003dsecurejarhandler-3.0.8.jar,asm-9.7.jar,asm-commons-9.7.jar,asm-tree-9.7.jar,asm-util-9.7.jar,asm-analysis-9.7.jar,bootstraplauncher-2.0.2.jar,JarJarFileSystems-0.4.1.jar,mixinextras-neoforge-0.4.1.jar,client-extra,neoforge-",
         "-Dfml.gameLayerLibraries",
         "-DmergeModules\u003djna-5.10.0.jar,jna-platform-5.10.0.jar",
@@ -54,7 +54,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-1.21/runs/client",
       "env": {
-        "MOD_CLASSES": "neoforge-1.21%%/home/luka/mc-bridge/neoforge-1.21/bin/main"
+        "MOD_CLASSES": "neoforge-1.21%%/home/luka/Combat/neoforge-1.21/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -99,7 +99,7 @@
         "java.base/sun.security.util\u003dcpw.mods.securejarhandler",
         "--add-exports",
         "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
-        "-DlegacyClassPath.file\u003d/home/luka/mc-bridge/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathData/classpath.txt",
+        "-DlegacyClassPath.file\u003d/home/luka/Combat/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathData/classpath.txt",
         "-DignoreList\u003dsecurejarhandler-3.0.8.jar,asm-9.7.jar,asm-commons-9.7.jar,asm-tree-9.7.jar,asm-util-9.7.jar,asm-analysis-9.7.jar,bootstraplauncher-2.0.2.jar,JarJarFileSystems-0.4.1.jar,mixinextras-neoforge-0.4.1.jar,client-extra,neoforge-",
         "-Dfml.gameLayerLibraries",
         "-DmergeModules\u003djna-5.10.0.jar,jna-platform-5.10.0.jar",
@@ -108,7 +108,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-1.21/runs/data",
       "env": {
-        "MOD_CLASSES": "neoforge-1.21%%/home/luka/mc-bridge/neoforge-1.21/bin/main"
+        "MOD_CLASSES": "neoforge-1.21%%/home/luka/Combat/neoforge-1.21/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -151,7 +151,7 @@
         "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
         "-Dneoforge.enableGameTest\u003dtrue",
         "-Dneoforge.gameTestServer\u003dtrue",
-        "-DlegacyClassPath.file\u003d/home/luka/mc-bridge/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathGameTestServer/classpath.txt",
+        "-DlegacyClassPath.file\u003d/home/luka/Combat/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathGameTestServer/classpath.txt",
         "-DignoreList\u003dsecurejarhandler-3.0.8.jar,asm-9.7.jar,asm-commons-9.7.jar,asm-tree-9.7.jar,asm-util-9.7.jar,asm-analysis-9.7.jar,bootstraplauncher-2.0.2.jar,JarJarFileSystems-0.4.1.jar,mixinextras-neoforge-0.4.1.jar,client-extra,neoforge-",
         "-Dfml.gameLayerLibraries",
         "-DmergeModules\u003djna-5.10.0.jar,jna-platform-5.10.0.jar",
@@ -160,7 +160,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-1.21/runs/gameTestServer",
       "env": {
-        "MOD_CLASSES": "neoforge-1.21%%/home/luka/mc-bridge/neoforge-1.21/bin/main"
+        "MOD_CLASSES": "neoforge-1.21%%/home/luka/Combat/neoforge-1.21/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -207,7 +207,7 @@
         "java.base/sun.security.util\u003dcpw.mods.securejarhandler",
         "--add-exports",
         "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
-        "-DlegacyClassPath.file\u003d/home/luka/mc-bridge/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathJunit/classpath.txt",
+        "-DlegacyClassPath.file\u003d/home/luka/Combat/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathJunit/classpath.txt",
         "-DignoreList\u003dsecurejarhandler-3.0.8.jar,asm-9.7.jar,asm-commons-9.7.jar,asm-tree-9.7.jar,asm-util-9.7.jar,asm-analysis-9.7.jar,bootstraplauncher-2.0.2.jar,JarJarFileSystems-0.4.1.jar,mixinextras-neoforge-0.4.1.jar,client-extra,neoforge-",
         "-Dfml.gameLayerLibraries",
         "-DmergeModules\u003djna-5.10.0.jar,jna-platform-5.10.0.jar",
@@ -216,7 +216,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-1.21/runs/junit",
       "env": {
-        "MOD_CLASSES": "neoforge-1.21%%/home/luka/mc-bridge/neoforge-1.21/bin/main",
+        "MOD_CLASSES": "neoforge-1.21%%/home/luka/Combat/neoforge-1.21/bin/main",
         "MCP_MAPPINGS": "UNUSED_DEPRECATED"
       },
       "shortenCommandLine": "argfile"
@@ -258,7 +258,7 @@
         "java.base/sun.security.util\u003dcpw.mods.securejarhandler",
         "--add-exports",
         "jdk.naming.dns/com.sun.jndi.dns\u003djava.naming",
-        "-DlegacyClassPath.file\u003d/home/luka/mc-bridge/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathServer/classpath.txt",
+        "-DlegacyClassPath.file\u003d/home/luka/Combat/neoforge-1.21/build/neoForm/neoFormJoined1.21.1-20240808.144430/steps/writeMinecraftClasspathServer/classpath.txt",
         "-DignoreList\u003dsecurejarhandler-3.0.8.jar,asm-9.7.jar,asm-commons-9.7.jar,asm-tree-9.7.jar,asm-util-9.7.jar,asm-analysis-9.7.jar,bootstraplauncher-2.0.2.jar,JarJarFileSystems-0.4.1.jar,mixinextras-neoforge-0.4.1.jar,client-extra,neoforge-",
         "-Dfml.gameLayerLibraries",
         "-DmergeModules\u003djna-5.10.0.jar,jna-platform-5.10.0.jar",
@@ -267,7 +267,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-1.21/runs/server",
       "env": {
-        "MOD_CLASSES": "neoforge-1.21%%/home/luka/mc-bridge/neoforge-1.21/bin/main"
+        "MOD_CLASSES": "neoforge-1.21%%/home/luka/Combat/neoforge-1.21/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -301,7 +301,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-26.x/runs/client",
       "env": {
-        "MOD_CLASSES": "neoforge-26.x%%/home/luka/mc-bridge/neoforge-26.x/bin/main"
+        "MOD_CLASSES": "neoforge-26.x%%/home/luka/Combat/neoforge-26.x/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -332,7 +332,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-26.x/runs/clientData",
       "env": {
-        "MOD_CLASSES": "neoforge-26.x%%/home/luka/mc-bridge/neoforge-26.x/bin/main"
+        "MOD_CLASSES": "neoforge-26.x%%/home/luka/Combat/neoforge-26.x/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -359,7 +359,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-26.x/runs/gameTestServer",
       "env": {
-        "MOD_CLASSES": "neoforge-26.x%%/home/luka/mc-bridge/neoforge-26.x/bin/main"
+        "MOD_CLASSES": "neoforge-26.x%%/home/luka/Combat/neoforge-26.x/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -392,7 +392,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-26.x/runs/junit",
       "env": {
-        "MOD_CLASSES": "neoforge-26.x%%/home/luka/mc-bridge/neoforge-26.x/bin/main"
+        "MOD_CLASSES": "neoforge-26.x%%/home/luka/Combat/neoforge-26.x/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -418,7 +418,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-26.x/runs/server",
       "env": {
-        "MOD_CLASSES": "neoforge-26.x%%/home/luka/mc-bridge/neoforge-26.x/bin/main"
+        "MOD_CLASSES": "neoforge-26.x%%/home/luka/Combat/neoforge-26.x/bin/main"
       },
       "shortenCommandLine": "argfile"
     },
@@ -444,7 +444,7 @@
       ],
       "cwd": "${workspaceFolder}/neoforge-26.x/runs/serverData",
       "env": {
-        "MOD_CLASSES": "neoforge-26.x%%/home/luka/mc-bridge/neoforge-26.x/bin/main"
+        "MOD_CLASSES": "neoforge-26.x%%/home/luka/Combat/neoforge-26.x/bin/main"
       },
       "shortenCommandLine": "argfile"
     }

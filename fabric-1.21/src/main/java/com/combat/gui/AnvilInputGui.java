@@ -38,11 +38,9 @@ public abstract class AnvilInputGui implements NamedScreenHandlerFactory {
             public void onSlotClick(int slotId, int clickData, net.minecraft.screen.slot.SlotActionType actionType, PlayerEntity player) {
                 if (slotId == 2) {
                     ItemStack output = getSlot(2).getStack();
-                    if (!output.isEmpty()) {
-                        String input = output.getName().getString();
-                        handleInput(input);
-                        player.closeHandledScreen();
-                    }
+                    ItemStack inputSlot = getSlot(0).getStack();
+                    String inputStr = !output.isEmpty() ? output.getName().getString() : (!inputSlot.isEmpty() ? inputSlot.getName().getString() : "");
+                    handleInput(inputStr);
                 } else {
                     super.onSlotClick(slotId, clickData, actionType, player);
                 }

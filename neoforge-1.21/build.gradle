@@ -16,3 +16,7 @@ tasks.withType(JavaCompile).configureEach {
 java {
     toolchain.languageVersion = JavaLanguageVersion.of(21)
 }
+
+jar {
+    from project(':common').sourceSets.main.output
+}

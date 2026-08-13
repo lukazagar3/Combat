@@ -29,7 +29,6 @@ public class CooldownsGui extends ChestGui {
     protected void setupItems() {
         inventory.clear();
 
-        // Border
         ItemStack border = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
         border.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal(""));
         for (int i = 0; i < 9; i++) {
@@ -37,25 +36,48 @@ public class CooldownsGui extends ChestGui {
             inventory.setStack(18 + i, border);
         }
 
-        // Back Arrow
         ItemStack back = new ItemStack(Items.ARROW);
         back.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Back to Main Menu").formatted(Formatting.YELLOW));
         inventory.setStack(18, back);
 
-        // Render targeted items
         for (int i = 0; i < targetedItems.size(); i++) {
             String itemId = targetedItems.get(i);
             double cooldown = ConfigManager.getConfig().itemCooldowns.getOrDefault(itemId, 0.0);
 
-            ItemStack itemStack;
+            net.minecraft.item.Item resolvedItem;
             try {
-                itemStack = new ItemStack(Registries.ITEM.get(Identifier.of(itemId)));
+                if ("minecraft:spear".equals(itemId)) {
+                    resolvedItem = Registries.ITEM.get(Identifier.of("minecraft:netherite_spear"));
+                    if (resolvedItem == Items.AIR) {
+                        resolvedItem = Registries.ITEM.get(Identifier.of("minecraft:spear"));
+                    }
+                } else {
+                    resolvedItem = Registries.ITEM.get(Identifier.of(itemId));
+                }
             } catch (Exception e) {
-                // Fallback for spears if registry lookup fails on older test environments
-                itemStack = new ItemStack(Items.TRIDENT);
+                resolvedItem = Items.AIR;
             }
-            itemStack.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, 
-                Text.literal(itemId).formatted(Formatting.GOLD));
+
+            ItemStack itemStack;
+            if (resolvedItem == Items.AIR) {
+                itemStack = switch (itemId) {
+                    case "minecraft:spear" -> new ItemStack(Items.NETHERITE_SWORD);
+                    default -> new ItemStack(Items.STICK);
+                };
+            } else {
+                itemStack = new ItemStack(resolvedItem);
+            }
+
+            String displayName = switch (itemId) {
+                case "minecraft:ender_pearl" -> "Ender Pearl";
+                case "minecraft:mace" -> "Mace";
+                case "minecraft:trident" -> "Trident";
+                case "minecraft:spear" -> "Spear (Lunge)";
+                default -> itemId.replace("minecraft:", "");
+            };
+
+            itemStack.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
+                Text.literal(displayName).formatted(Formatting.GOLD, Formatting.BOLD));
 
             List<Text> lore = new ArrayList<>();
             lore.add(Text.literal("Cooldown: " + cooldown + "s").formatted(Formatting.GRAY));

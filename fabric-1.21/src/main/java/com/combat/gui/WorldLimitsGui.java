@@ -4,19 +4,27 @@ import com.combat.CombatConfig;
 import com.combat.ConfigManager;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
-import net.minecraft.registry.Registries;
 import net.minecraft.screen.slot.SlotActionType;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
-import net.minecraft.util.Identifier;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 
 public class WorldLimitsGui extends ChestGui {
-    private final List<String> worldLimitItemIds = new ArrayList<>();
+    private static final String[] TARGET_ITEMS = {
+        "minecraft:netherite_helmet",
+        "minecraft:netherite_chestplate",
+        "minecraft:netherite_leggings",
+        "minecraft:netherite_boots",
+        "minecraft:mace",
+        "minecraft:netherite_sword",
+        "minecraft:netherite_axe"
+    };
+
+    private static final int[] ITEM_SLOTS  = {10, 11, 12, 13, 14, 15, 16};
+    private static final int[] RESET_SLOTS = {19, 20, 21, 22, 23, 24, 25};
 
     public WorldLimitsGui(ServerPlayerEntity player) {
         super(player, "World Item Limits", 4);
@@ -25,9 +33,7 @@ public class WorldLimitsGui extends ChestGui {
     @Override
     protected void setupItems() {
         inventory.clear();
-        worldLimitItemIds.clear();
 
-        // Border
         ItemStack border = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
         border.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal(""));
         for (int i = 0; i < 9; i++) {
@@ -35,40 +41,55 @@ public class WorldLimitsGui extends ChestGui {
             inventory.setStack(27 + i, border);
         }
 
-        // Back Arrow
         ItemStack back = new ItemStack(Items.ARROW);
         back.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Back to Main Menu").formatted(Formatting.YELLOW));
         inventory.setStack(27, back);
 
-        // Add Button
-        ItemStack add = new ItemStack(Items.EMERALD);
-        add.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Add World Limited Item").formatted(Formatting.GREEN));
-        inventory.setStack(35, add);
+        for (int i = 0; i < TARGET_ITEMS.length; i++) {
+            String itemId = TARGET_ITEMS[i];
+            CombatConfig.WorldLimitedItem wli = ConfigManager.getConfig().worldLimits.get(itemId);
+            int currentLimit = wli != null ? wli.maxCount : -1;
+            boolean hasLimit = currentLimit > 0;
 
-        // Render current world-limited items
-        int slot = 9;
-        for (Map.Entry<String, CombatConfig.WorldLimitedItem> entry : ConfigManager.getConfig().worldLimits.entrySet()) {
-            if (slot >= 27) break;
-            String itemId = entry.getKey();
-            CombatConfig.WorldLimitedItem wli = entry.getValue();
+            ItemStack itemStack = switch (i) {
+                case 0 -> new ItemStack(Items.NETHERITE_HELMET);
+                case 1 -> new ItemStack(Items.NETHERITE_CHESTPLATE);
+                case 2 -> new ItemStack(Items.NETHERITE_LEGGINGS);
+                case 3 -> new ItemStack(Items.NETHERITE_BOOTS);
+                case 4 -> new ItemStack(Items.MACE);
+                case 5 -> new ItemStack(Items.NETHERITE_SWORD);
+                default -> new ItemStack(Items.NETHERITE_AXE);
+            };
 
-            ItemStack itemStack;
-            try {
-                itemStack = new ItemStack(Registries.ITEM.get(Identifier.of(itemId)));
-            } catch (Exception e) {
-                itemStack = new ItemStack(Items.BARRIER);
-            }
-            itemStack.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, 
-                Text.literal(itemId).formatted(Formatting.GOLD));
+            String name = getItemDisplayName(itemId);
+            itemStack.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
+                Text.literal(name).formatted(Formatting.GOLD, Formatting.BOLD));
 
             List<Text> lore = new ArrayList<>();
-            lore.add(Text.literal("Global Server Limit: " + wli.maxCount).formatted(Formatting.GRAY));
-            lore.add(Text.literal("Click to Configure").formatted(Formatting.YELLOW, Formatting.ITALIC));
-            itemStack.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(lore));
+            if (!hasLimit) {
+                lore.add(Text.literal("World Limit: UNLIMITED").formatted(Formatting.GRAY));
+            } else {
+                lore.add(Text.literal("World Limit: Max " + currentLimit + " in world").formatted(Formatting.GREEN, Formatting.BOLD));
+            }
+            lore.add(Text.literal(""));
+            lore.add(Text.literal("Left-click to set limit").formatted(Formatting.YELLOW, Formatting.ITALIC));
+            itemStack.set(net.minecraft.component.DataComponentTypes.LORE,
+                new net.minecraft.component.type.LoreComponent(lore));
+            inventory.setStack(ITEM_SLOTS[i], itemStack);
 
-            inventory.setStack(slot, itemStack);
-            worldLimitItemIds.add(itemId);
-            slot++;
+            if (hasLimit) {
+                ItemStack reset = new ItemStack(Items.RED_STAINED_GLASS_PANE);
+                reset.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Reset to Unlimited").formatted(Formatting.RED));
+                List<Text> resetLore = new ArrayList<>();
+                resetLore.add(Text.literal("Click to remove the world limit").formatted(Formatting.GRAY, Formatting.ITALIC));
+                reset.set(net.minecraft.component.DataComponentTypes.LORE,
+                    new net.minecraft.component.type.LoreComponent(resetLore));
+                inventory.setStack(RESET_SLOTS[i], reset);
+            } else {
+                ItemStack empty = new ItemStack(Items.LIME_STAINED_GLASS_PANE);
+                empty.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("No Limit Set").formatted(Formatting.DARK_GRAY, Formatting.ITALIC));
+                inventory.setStack(RESET_SLOTS[i], empty);
+            }
         }
     }
 
@@ -76,87 +97,61 @@ public class WorldLimitsGui extends ChestGui {
     protected void handleSlotClick(int slotId, int clickData, SlotActionType actionType) {
         if (slotId == 27) {
             new CombatMenuGui(player).open();
-        } else if (slotId == 35) {
-            // Add new world limited item
-            new AnvilInputGui(player, "Enter Item ID", "minecraft:mace") {
-                @Override
-                protected void handleInput(String inputItemId) {
-                    new AnvilInputGui(player, "Enter Max Global Count", "1") {
-                        @Override
-                        protected void handleInput(String inputCount) {
-                            try {
-                                int count = Integer.parseInt(inputCount.trim());
-                                if (count <= 0) {
-                                    player.sendMessage(Text.literal("Limit must be positive!").formatted(Formatting.RED), false);
-                                } else {
-                                    CombatConfig.WorldLimitedItem wli = new CombatConfig.WorldLimitedItem();
-                                    wli.maxCount = count;
-                                    ConfigManager.getConfig().worldLimits.put(inputItemId.trim(), wli);
-                                    ConfigManager.save();
-                                }
-                            } catch (NumberFormatException e) {
-                                player.sendMessage(Text.literal("Invalid count!").formatted(Formatting.RED), false);
+            return;
+        }
+
+        for (int i = 0; i < ITEM_SLOTS.length; i++) {
+            if (slotId == ITEM_SLOTS[i]) {
+                String itemId = TARGET_ITEMS[i];
+                CombatConfig.WorldLimitedItem wli = ConfigManager.getConfig().worldLimits.get(itemId);
+                int currentLimit = wli != null ? wli.maxCount : 1;
+
+                new AnvilInputGui(player, "Set World Limit", String.valueOf(currentLimit)) {
+                    @Override
+                    protected void handleInput(String inputStr) {
+                        try {
+                            int count = Integer.parseInt(inputStr.trim());
+                            if (count <= 0) {
+                                ConfigManager.getConfig().worldLimits.remove(itemId);
+                                player.sendMessage(Text.literal("Removed world limit for " + getItemDisplayName(itemId)).formatted(Formatting.YELLOW), false);
+                            } else {
+                                CombatConfig.WorldLimitedItem item = ConfigManager.getConfig().worldLimits.computeIfAbsent(itemId, k -> new CombatConfig.WorldLimitedItem());
+                                item.maxCount = count;
+                                player.sendMessage(Text.literal("World limit for " + getItemDisplayName(itemId) + " set to " + count).formatted(Formatting.GREEN), false);
                             }
-                            new WorldLimitsGui(player).open();
+                            ConfigManager.save();
+                        } catch (NumberFormatException e) {
+                            player.sendMessage(Text.literal("Invalid number!").formatted(Formatting.RED), false);
                         }
-                    }.open();
-                }
-            }.open();
-        } else if (slotId >= 9 && slotId < 9 + worldLimitItemIds.size()) {
-            String itemId = worldLimitItemIds.get(slotId - 9);
-            // Open submenu
-            new ChestGui(player, "Configure: " + itemId, 1) {
-                @Override
-                protected void setupItems() {
-                    // Change limit (Green glass pane)
-                    ItemStack edit = new ItemStack(Items.GREEN_STAINED_GLASS_PANE);
-                    edit.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Change Global Count").formatted(Formatting.GREEN));
-                    inventory.setStack(2, edit);
-
-                    // Remove limit (Red glass pane)
-                    ItemStack remove = new ItemStack(Items.RED_STAINED_GLASS_PANE);
-                    remove.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Remove World Limit").formatted(Formatting.RED));
-                    inventory.setStack(6, remove);
-
-                    // Cancel (Arrow)
-                    ItemStack cancel = new ItemStack(Items.ARROW);
-                    cancel.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Cancel").formatted(Formatting.GRAY));
-                    inventory.setStack(4, cancel);
-                }
-
-                @Override
-                protected void handleSlotClick(int subSlotId, int clickData, SlotActionType actionType) {
-                    if (subSlotId == 2) {
-                        CombatConfig.WorldLimitedItem wli = ConfigManager.getConfig().worldLimits.get(itemId);
-                        int currentCount = wli != null ? wli.maxCount : 1;
-                        new AnvilInputGui(player, "Set Max Global Count", String.valueOf(currentCount)) {
-                            @Override
-                            protected void handleInput(String inputCount) {
-                                try {
-                                    int count = Integer.parseInt(inputCount.trim());
-                                    if (count <= 0) {
-                                        player.sendMessage(Text.literal("Limit must be positive!").formatted(Formatting.RED), false);
-                                    } else {
-                                        CombatConfig.WorldLimitedItem item = ConfigManager.getConfig().worldLimits.computeIfAbsent(itemId, k -> new CombatConfig.WorldLimitedItem());
-                                        item.maxCount = count;
-                                        ConfigManager.save();
-                                    }
-                                } catch (NumberFormatException e) {
-                                    player.sendMessage(Text.literal("Invalid count!").formatted(Formatting.RED), false);
-                                }
-                                new WorldLimitsGui(player).open();
-                            }
-                        }.open();
-                    } else if (subSlotId == 6) {
-                        ConfigManager.getConfig().worldLimits.remove(itemId);
-                        ConfigManager.save();
-                        player.sendMessage(Text.literal("Removed world limit for " + itemId).formatted(Formatting.YELLOW), false);
-                        new WorldLimitsGui(player).open();
-                    } else if (subSlotId == 4) {
                         new WorldLimitsGui(player).open();
                     }
-                }
-            }.open();
+                }.open();
+                return;
+            }
         }
+
+        for (int i = 0; i < RESET_SLOTS.length; i++) {
+            if (slotId == RESET_SLOTS[i]) {
+                String itemId = TARGET_ITEMS[i];
+                ConfigManager.getConfig().worldLimits.remove(itemId);
+                ConfigManager.save();
+                player.sendMessage(Text.literal("World limit for " + getItemDisplayName(itemId) + " reset to unlimited.").formatted(Formatting.YELLOW), false);
+                new WorldLimitsGui(player).open();
+                return;
+            }
+        }
+    }
+
+    private String getItemDisplayName(String itemId) {
+        return switch (itemId) {
+            case "minecraft:netherite_helmet"     -> "Netherite Helmet";
+            case "minecraft:netherite_chestplate" -> "Netherite Chestplate";
+            case "minecraft:netherite_leggings"   -> "Netherite Leggings";
+            case "minecraft:netherite_boots"      -> "Netherite Boots";
+            case "minecraft:mace"                 -> "Mace";
+            case "minecraft:netherite_sword"      -> "Netherite Sword";
+            case "minecraft:netherite_axe"        -> "Netherite Axe";
+            default                               -> itemId;
+        };
     }
 }

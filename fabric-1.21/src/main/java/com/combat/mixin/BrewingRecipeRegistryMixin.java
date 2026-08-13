@@ -13,19 +13,23 @@ import net.minecraft.util.Identifier;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 import java.util.Optional;
 
 @Mixin(BrewingRecipeRegistry.class)
-public class BrewingRecipeRegistryMixin {
+public abstract class BrewingRecipeRegistryMixin {
+
+    @Shadow
+    public abstract ItemStack craft(ItemStack ingredient, ItemStack input);
 
     @Inject(method = "hasRecipe", at = @At("RETURN"), cancellable = true)
-    private static void onHasRecipe(ItemStack input, ItemStack ingredient, CallbackInfoReturnable<Boolean> cir) {
+    private void onHasRecipe(ItemStack input, ItemStack ingredient, CallbackInfoReturnable<Boolean> cir) {
         if (!cir.getReturnValue()) return;
 
         // Simulate brewing to get the output item stack
-        ItemStack result = BrewingRecipeRegistry.craft(ingredient, input);
+        ItemStack result = this.craft(ingredient, input);
         if (result.isEmpty()) return;
 
         // Check if the result potion exceeds any configured limits

@@ -19,14 +19,19 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.ChatFormatting;
+import net.minecraft.world.item.ItemStack;
 
 import java.io.File;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
+import java.util.Map;
+import java.util.HashMap;
 
 public class CombatMod implements ModInitializer {
     public static MinecraftServer serverInstance;
+    public static final Map<UUID, Long> combatTagExpiration = new HashMap<>();
+    public static final Map<UUID, Long> immunityExpiration = new HashMap<>();
 
     @Override
     public void onInitialize() {
@@ -40,6 +45,22 @@ public class CombatMod implements ModInitializer {
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
             DataManager.save();
             ConfigManager.save();
+        });
+
+        net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
+            if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
+                ItemStack stack = serverPlayer.getItemInHand(hand);
+                String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+                if ("minecraft:spear".equals(itemId)) {
+                    java.util.UUID uuid = serverPlayer.getUUID();
+                    long now = System.currentTimeMillis();
+                    Long combatEnd = combatTagExpiration.get(uuid);
+                    if (combatEnd != null && now < combatEnd) {
+                        serverPlayer.getCooldowns().addCooldown(stack, 1);
+                    }
+                }
+            }
+            return net.minecraft.world.InteractionResult.PASS;
         });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
@@ -127,8 +148,8 @@ public class CombatMod implements ModInitializer {
         ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             ServerPlayer player = handler.getPlayer();
             UUID uuid = player.getUUID();
-            if (com.combat.mixin.LivingEntityMixin.combatTagExpiration.containsKey(uuid)) {
-                com.combat.mixin.LivingEntityMixin.combatTagExpiration.remove(uuid);
+            if (combatTagExpiration.containsKey(uuid)) {
+                combatTagExpiration.remove(uuid);
                 player.kill();
             }
             DataManager.onPlayerLogout(uuid);
@@ -137,7 +158,7 @@ public class CombatMod implements ModInitializer {
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
             if (!world.isClient() && player instanceof ServerPlayer serverPlayer) {
                 if (world.getBlockState(hitResult.getBlockPos()).is(Blocks.ENDER_CHEST)) {
-                    if (com.combat.mixin.LivingEntityMixin.combatTagExpiration.containsKey(serverPlayer.getUUID())) {
+                    if (combatTagExpiration.containsKey(serverPlayer.getUUID())) {
                         if (!ConfigManager.getConfig().allowEnderchestInCombat) {
                             serverPlayer.sendSystemMessage(Component.literal("You cannot open Ender Chests in combat!").withStyle(ChatFormatting.RED));
                             return InteractionResult.FAIL;

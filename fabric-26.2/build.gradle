@@ -33,3 +33,7 @@ sourceSets {
         }
     }
 }
+
+jar {
+    from project(':common').sourceSets.main.output
+}
