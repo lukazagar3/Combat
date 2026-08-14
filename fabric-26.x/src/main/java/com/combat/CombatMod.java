@@ -173,6 +173,27 @@ public class CombatMod implements ModInitializer {
             ConfigManager.save();
         });
 
+        net.fabricmc.fabric.api.event.player.AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
+            if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
+                ItemStack mainHand = serverPlayer.getItemInHand(hand);
+                if (mainHand.is(net.minecraft.world.item.Items.MACE)) {
+                    if (!(entity instanceof net.minecraft.world.entity.player.Player)) {
+                        return net.minecraft.world.InteractionResult.PASS;
+                    }
+                    if (serverPlayer.getCooldowns().isOnCooldown(mainHand)) {
+                        return net.minecraft.world.InteractionResult.FAIL;
+                    }
+                    if (serverPlayer.fallDistance > 1.5F) {
+                        Double maceSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:mace");
+                        if (maceSec != null && maceSec > 0.0) {
+                            serverPlayer.getCooldowns().addCooldown(mainHand, (int)(maceSec * 20));
+                        }
+                    }
+                }
+            }
+            return net.minecraft.world.InteractionResult.PASS;
+        });
+
         net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
                 ItemStack stack = serverPlayer.getItemInHand(hand);
@@ -194,9 +215,15 @@ public class CombatMod implements ModInitializer {
                         serverPlayer.getCooldowns().addCooldown(stack, (int)(cooldownSec * 20));
                     }
                 } else if ("minecraft:ender_pearl".equals(itemId)) {
-                    Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:ender_pearl");
-                    if (cooldownSec != null && cooldownSec > 0.0) {
-                        serverPlayer.getCooldowns().addCooldown(stack, (int)(cooldownSec * 20));
+                    UUID uuid = serverPlayer.getUUID();
+                    long now = System.currentTimeMillis();
+                    Long combatEnd = combatTagExpiration.get(uuid);
+                    boolean inCombat = combatEnd != null && now < combatEnd;
+                    if (inCombat) {
+                        Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:ender_pearl");
+                        if (cooldownSec != null && cooldownSec > 0.0) {
+                            serverPlayer.getCooldowns().addCooldown(stack, (int)(cooldownSec * 20));
+                        }
                     }
                 }
             }
