@@ -32,6 +32,8 @@ public class CombatMod implements ModInitializer {
     public static MinecraftServer serverInstance;
     public static final Map<UUID, Long> combatTagExpiration = new HashMap<>();
     public static final Map<UUID, Long> immunityExpiration = new HashMap<>();
+    public static final Map<UUID, Long> tridentRiptideExpiration = new HashMap<>();
+    public static final Map<UUID, Long> spearLungeExpiration = new HashMap<>();
     public static final java.util.Set<String> notifiedOwnership = new java.util.HashSet<>();
 
     public static int countItemInPlayer(ServerPlayerEntity player, String itemId) {
@@ -175,12 +177,26 @@ public class CombatMod implements ModInitializer {
             if (!world.isClient() && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer) {
                 ItemStack stack = serverPlayer.getStackInHand(hand);
                 String itemId = Registries.ITEM.getId(stack.getItem()).toString();
+
                 if ("minecraft:spear".equals(itemId) || "minecraft:netherite_spear".equals(itemId)) {
-                    java.util.UUID uuid = serverPlayer.getUuid();
-                    long now = System.currentTimeMillis();
-                    Long combatEnd = combatTagExpiration.get(uuid);
-                    if (combatEnd != null && now < combatEnd) {
-                        serverPlayer.getItemCooldownManager().set(stack, 1);
+                    Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
+                    if (cooldownSec != null && cooldownSec > 0.0) {
+                        UUID uuid = serverPlayer.getUuid();
+                        long now = System.currentTimeMillis();
+                        Long expiration = spearLungeExpiration.get(uuid);
+                        if (expiration != null && now < expiration) {
+                            double remaining = (expiration - now) / 1000.0;
+                            serverPlayer.sendMessage(Text.literal(String.format("Spear Lunge is on cooldown for %.1fs!", remaining)).formatted(Formatting.RED), false);
+                            serverPlayer.getItemCooldownManager().set(stack, (int)(remaining * 20));
+                            return net.minecraft.util.ActionResult.FAIL;
+                        }
+                        spearLungeExpiration.put(uuid, now + (long)(cooldownSec * 1000L));
+                        serverPlayer.getItemCooldownManager().set(stack, (int)(cooldownSec * 20));
+                    }
+                } else if ("minecraft:ender_pearl".equals(itemId)) {
+                    Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:ender_pearl");
+                    if (cooldownSec != null && cooldownSec > 0.0) {
+                        serverPlayer.getItemCooldownManager().set(stack, (int)(cooldownSec * 20));
                     }
                 }
             }

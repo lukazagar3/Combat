@@ -1,32 +1,46 @@
 package com.combat.mixin;
 
+import com.combat.ConfigManager;
+import com.combat.CombatMod;
 import net.minecraft.item.ItemStack;
-import net.minecraft.item.Items;
 import net.minecraft.world.World;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
+import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import java.util.UUID;
 
 @Mixin(net.minecraft.item.TridentItem.class)
 public class TridentItemMixin {
-    @Inject(method = "onStoppedUsing", at = @At("HEAD"))
-    private void onStoppedUsing(ItemStack stack, World world, LivingEntity user, int remainingUseTicks, CallbackInfoReturnable<?> cir) {
+    @Inject(method = "onStoppedUsing", at = @At("HEAD"), cancellable = true)
+    private void onStoppedUsing(ItemStack stack, World world, LivingEntity user, int remainingUseTicks, CallbackInfo ci) {
         if (!world.isClient() && user instanceof ServerPlayerEntity player) {
             var registry = world.getRegistryManager().getOptional(net.minecraft.registry.RegistryKeys.ENCHANTMENT).orElse(null);
             var entry = registry != null ? registry.getEntry(net.minecraft.util.Identifier.of("minecraft", "riptide")).orElse(null) : null;
             int riptide = entry != null ? EnchantmentHelper.getLevel(entry, stack) : 0;
             if (riptide > 0) {
-                UUID uuid = player.getUuid();
-                long now = System.currentTimeMillis();
-                Long combatEnd = com.combat.CombatMod.combatTagExpiration.get(uuid);
-                if (combatEnd != null && now < combatEnd) {
-                    player.getItemCooldownManager().set(new ItemStack(Items.TRIDENT), 1);
+                Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:trident");
+                if (cooldownSec != null && cooldownSec > 0.0) {
+                    UUID uuid = player.getUuid();
+                    long now = System.currentTimeMillis();
+                    Long expiration = CombatMod.tridentRiptideExpiration.get(uuid);
+                    if (expiration != null && now < expiration) {
+                        double remaining = (expiration - now) / 1000.0;
+                        player.sendMessage(Text.literal(String.format("Trident Riptide is on cooldown for %.1fs!", remaining)).formatted(Formatting.RED), false);
+                        player.getItemCooldownManager().set(stack, (int)(remaining * 20));
+                        ci.cancel();
+                        return;
+                    }
+
+                    // Apply Riptide cooldown
+                    CombatMod.tridentRiptideExpiration.put(uuid, now + (long)(cooldownSec * 1000L));
+                    player.getItemCooldownManager().set(stack, (int)(cooldownSec * 20));
                 }
             }
         }

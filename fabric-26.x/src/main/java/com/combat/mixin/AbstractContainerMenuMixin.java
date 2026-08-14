@@ -39,7 +39,6 @@ public abstract class AbstractContainerMenuMixin {
         ItemStack targetItem = targetSlot.getItem();
         ItemStack carriedItem = this.getCarried();
 
-        // Check if menu is a workstation (Anvil, Smithing, Grindstone, Crafting, Enchantment)
         boolean isWorkstation = menu instanceof net.minecraft.world.inventory.ItemCombinerMenu ||
                                 menu instanceof net.minecraft.world.inventory.AnvilMenu ||
                                 menu instanceof net.minecraft.world.inventory.CraftingMenu ||
@@ -50,51 +49,79 @@ public abstract class AbstractContainerMenuMixin {
 
         // 1. Check taking/crafting items into player inventory (limit checks)
         if (isExternalSlot && !targetItem.isEmpty()) {
-            // If taking from an anvil/smithing/grindstone result slot (slot 2), allow it (it's repairing/enchanting an existing item)
             boolean isCombinerResult = (menu instanceof net.minecraft.world.inventory.ItemCombinerMenu) && targetSlot.index == 2;
             if (!isCombinerResult) {
                 String itemId = BuiltInRegistries.ITEM.getKey(targetItem.getItem()).toString();
                 if (actionName.equals("QUICK_MOVE") || (actionName.equals("PICKUP") && carriedItem.isEmpty()) || actionName.equals("SWAP")) {
-                    if (com.combat.CombatMod.isItemLimitExceeded(serverPlayer, itemId, targetItem.getCount())) {
+                    int allowed = com.combat.CombatMod.getMaxAllowedCount(serverPlayer, itemId);
+                    if (allowed <= 0) {
                         serverPlayer.sendSystemMessage(Component.literal("Limit reached for " + itemId.replace("minecraft:", "") + "! Cannot acquire more.").withStyle(ChatFormatting.RED));
                         ci.cancel();
                         menu.broadcastChanges();
                         return;
                     }
+                    if (targetItem.getCount() > allowed) {
+                        if (actionName.equals("QUICK_MOVE")) {
+                            ItemStack takeStack = targetItem.split(allowed);
+                            if (!serverPlayer.getInventory().add(takeStack)) {
+                                targetItem.grow(takeStack.getCount());
+                            }
+                            serverPlayer.sendSystemMessage(Component.literal("Acquired " + (allowed - takeStack.getCount()) + " " + itemId.replace("minecraft:", "") + " (limit reached).").withStyle(ChatFormatting.YELLOW));
+                            ci.cancel();
+                            menu.broadcastChanges();
+                            return;
+                        } else if (actionName.equals("PICKUP") && carriedItem.isEmpty()) {
+                            ItemStack takeStack = targetItem.split(allowed);
+                            menu.setCarried(takeStack);
+                            ci.cancel();
+                            menu.broadcastChanges();
+                            return;
+                        }
+                    }
                 }
             }
         }
 
-        // 2. Check placing world-limited items into external STORAGE containers (chests, ender chest, barrels, etc.)
-        // Workstations (Anvils, Crafting, Smithing) are NOT storage containers!
+        // 2. Check placing world-limited items into external STORAGE containers
         if (!isWorkstation) {
-            java.util.Map<String, com.combat.CombatConfig.WorldLimitedItem> worldLimits = com.combat.ConfigManager.getConfig().worldLimits;
-            if (!worldLimits.isEmpty()) {
-                if (isExternalSlot && !carriedItem.isEmpty()) {
-                    String itemId = BuiltInRegistries.ITEM.getKey(carriedItem.getItem()).toString();
-                    com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
-                    if (wli != null && wli.maxCount > 0) {
-                        serverPlayer.sendSystemMessage(Component.literal("World-limited items cannot be stored in containers!").withStyle(ChatFormatting.RED));
-                        ci.cancel();
-                        menu.broadcastChanges();
-                        return;
-                    }
-                } else if (!isExternalSlot && actionName.equals("QUICK_MOVE") && !targetItem.isEmpty()) {
-                    String itemId = BuiltInRegistries.ITEM.getKey(targetItem.getItem()).toString();
-                    com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
-                    if (wli != null && wli.maxCount > 0) {
-                        boolean hasExternal = false;
-                        for (Slot s : this.slots) {
-                            if (!(s.container instanceof net.minecraft.world.entity.player.Inventory)) {
-                                hasExternal = true;
-                                break;
-                            }
-                        }
-                        if (hasExternal) {
+            boolean activeInContext = true;
+            if (ConfigManager.getConfig().limitsOnlyInCombat) {
+                Long combatEnd = com.combat.CombatMod.combatTagExpiration.get(serverPlayer.getUUID());
+                boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
+                if (!inCombat) {
+                    activeInContext = false;
+                }
+            }
+
+            if (activeInContext) {
+                java.util.Map<String, com.combat.CombatConfig.WorldLimitedItem> worldLimits = ConfigManager.getConfig().worldLimits;
+                if (!worldLimits.isEmpty()) {
+                    if (isExternalSlot && !carriedItem.isEmpty()) {
+                        String itemId = BuiltInRegistries.ITEM.getKey(carriedItem.getItem()).toString();
+                        com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
+                        if (wli != null && wli.maxCount > 0) {
                             serverPlayer.sendSystemMessage(Component.literal("World-limited items cannot be stored in containers!").withStyle(ChatFormatting.RED));
                             ci.cancel();
                             menu.broadcastChanges();
                             return;
+                        }
+                    } else if (!isExternalSlot && actionName.equals("QUICK_MOVE") && !targetItem.isEmpty()) {
+                        String itemId = BuiltInRegistries.ITEM.getKey(targetItem.getItem()).toString();
+                        com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
+                        if (wli != null && wli.maxCount > 0) {
+                            boolean hasExternal = false;
+                            for (Slot s : this.slots) {
+                                if (!(s.container instanceof net.minecraft.world.entity.player.Inventory)) {
+                                    hasExternal = true;
+                                    break;
+                                }
+                            }
+                            if (hasExternal) {
+                                serverPlayer.sendSystemMessage(Component.literal("World-limited items cannot be stored in containers!").withStyle(ChatFormatting.RED));
+                                ci.cancel();
+                                menu.broadcastChanges();
+                                return;
+                            }
                         }
                     }
                 }

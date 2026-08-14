@@ -95,6 +95,10 @@ public abstract class LivingEntityMixin {
         UUID uuid = player.getUuid();
         long now = System.currentTimeMillis();
 
+        if (!player.isAlive() || player.getHealth() <= 0.0f) {
+            com.combat.CombatMod.combatTagExpiration.remove(uuid);
+        }
+
         if (isImmune(uuid)) {
             player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 4, false, false, false));
         }
