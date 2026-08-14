@@ -34,19 +34,21 @@ public class CombatMod implements ModInitializer {
     public static final Map<UUID, Long> immunityExpiration = new HashMap<>();
     public static final Map<UUID, Long> tridentRiptideExpiration = new HashMap<>();
     public static final Map<UUID, Long> spearLungeExpiration = new HashMap<>();
+    public static final java.util.Set<UUID> pendingPearlThrows = new java.util.HashSet<>();
+    public static final java.util.Set<UUID> pendingSpearUses = new java.util.HashSet<>();
     public static final java.util.Set<String> notifiedOwnership = new java.util.HashSet<>();
 
     public static int countItemInPlayer(ServerPlayerEntity player, String itemId) {
         int total = 0;
         for (int i = 0; i < player.getInventory().size(); i++) {
             ItemStack stack = player.getInventory().getStack(i);
-            if (!stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) {
+            if (!stack.isEmpty() && Registries.ITEM.getId(stack).toString().equals(itemId)) {
                 total += stack.getCount();
             }
         }
         if (player.currentScreenHandler != null) {
             ItemStack carried = player.currentScreenHandler.getCursorStack();
-            if (!carried.isEmpty() && Registries.ITEM.getId(carried.getItem()).toString().equals(itemId)) {
+            if (!carried.isEmpty() && Registries.ITEM.getId(carried).toString().equals(itemId)) {
                 total += carried.getCount();
             }
         }
@@ -142,7 +144,7 @@ public class CombatMod implements ModInitializer {
                 for (int i = player.getInventory().size() - 1; i >= 0; i--) {
                     if (excess <= 0) break;
                     ItemStack stack = player.getInventory().getStack(i);
-                    if (!stack.isEmpty() && Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) {
+                    if (!stack.isEmpty() && Registries.ITEM.getId(stack).toString().equals(itemId)) {
                         int count = stack.getCount();
                         int toDrop = Math.min(count, excess);
                         ItemStack dropStack = stack.split(toDrop);
@@ -197,22 +199,27 @@ public class CombatMod implements ModInitializer {
         net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (!world.isClient() && player instanceof net.minecraft.server.network.ServerPlayerEntity serverPlayer) {
                 ItemStack stack = serverPlayer.getStackInHand(hand);
-                String itemId = Registries.ITEM.getId(stack.getItem()).toString();
+                String itemId = Registries.ITEM.getId(stack).toString();
 
                 if ("minecraft:spear".equals(itemId) || "minecraft:netherite_spear".equals(itemId)) {
-                    Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
-                    if (cooldownSec != null && cooldownSec > 0.0) {
-                        UUID uuid = serverPlayer.getUuid();
-                        long now = System.currentTimeMillis();
-                        Long expiration = spearLungeExpiration.get(uuid);
-                        if (expiration != null && now < expiration) {
-                            double remaining = (expiration - now) / 1000.0;
-                            serverPlayer.sendMessage(Text.literal(String.format("Spear Lunge is on cooldown for %.1fs!", remaining)).formatted(Formatting.RED), false);
-                            serverPlayer.getItemCooldownManager().set(stack, (int)(remaining * 20));
-                            return net.minecraft.util.ActionResult.FAIL;
+                    UUID uuid = serverPlayer.getUuid();
+                    long now = System.currentTimeMillis();
+                    Long combatEnd = combatTagExpiration.get(uuid);
+                    boolean inCombat = combatEnd != null && now < combatEnd;
+                    if (inCombat) {
+                        Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
+                        if (cooldownSec != null && cooldownSec > 0.0) {
+                            Long expiration = spearLungeExpiration.get(uuid);
+                            if (expiration != null && now < expiration) {
+                                double remaining = (expiration - now) / 1000.0;
+                                serverPlayer.sendMessage(Text.literal(String.format("Spear Lunge is on cooldown for %.1fs!", remaining)).formatted(Formatting.RED), false);
+                                serverPlayer.getItemCooldownManager().set(stack, (int)(remaining * 20));
+                                return net.minecraft.util.ActionResult.FAIL;
+                            }
+                            if (!serverPlayer.getItemCooldownManager().isCoolingDown(stack)) {
+                                pendingSpearUses.add(uuid);
+                            }
                         }
-                        spearLungeExpiration.put(uuid, now + (long)(cooldownSec * 1000L));
-                        serverPlayer.getItemCooldownManager().set(stack, (int)(cooldownSec * 20));
                     }
                 } else if ("minecraft:ender_pearl".equals(itemId)) {
                     UUID uuid = serverPlayer.getUuid();
@@ -222,12 +229,44 @@ public class CombatMod implements ModInitializer {
                     if (inCombat) {
                         Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:ender_pearl");
                         if (cooldownSec != null && cooldownSec > 0.0) {
-                            serverPlayer.getItemCooldownManager().set(stack, (int)(cooldownSec * 20));
+                            if (!serverPlayer.getItemCooldownManager().isCoolingDown(stack)) {
+                                pendingPearlThrows.add(uuid);
+                            }
                         }
                     }
                 }
             }
             return net.minecraft.util.ActionResult.PASS;
+        });
+
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+            for (UUID uuid : pendingPearlThrows) {
+                net.minecraft.server.network.ServerPlayerEntity player = server.getPlayerManager().getPlayer(uuid);
+                if (player != null) {
+                    ItemStack pearl = new ItemStack(net.minecraft.item.Items.ENDER_PEARL);
+                    if (player.getItemCooldownManager().isCoolingDown(pearl)) {
+                        Double pearlSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:ender_pearl");
+                        if (pearlSec != null && pearlSec > 0.0) {
+                            player.getItemCooldownManager().set(pearl, (int)(pearlSec * 20));
+                        }
+                    }
+                }
+            }
+            pendingPearlThrows.clear();
+
+            for (UUID uuid : pendingSpearUses) {
+                net.minecraft.server.network.ServerPlayerEntity player = server.getPlayerManager().getPlayer(uuid);
+                if (player != null) {
+                    Double spearSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
+                    if (spearSec != null && spearSec > 0.0) {
+                        long now = System.currentTimeMillis();
+                        spearLungeExpiration.put(uuid, now + (long)(spearSec * 1000L));
+                        ItemStack mainHand = player.getMainHandStack();
+                        if (!mainHand.isEmpty()) player.getItemCooldownManager().set(mainHand, (int)(spearSec * 20));
+                    }
+                }
+            }
+            pendingSpearUses.clear();
         });
 
         // Command registrations
@@ -246,7 +285,7 @@ public class CombatMod implements ModInitializer {
                         .then(CommandManager.argument("item", ItemStackArgumentType.itemStack(registryAccess))
                             .then(CommandManager.argument("amount", IntegerArgumentType.integer(0))
                                 .executes(context -> {
-                                    Identifier itemId = ItemStackArgumentType.getItemStackArgument(context, "item").getItem().getRegistryEntry().registryKey().getValue();
+                                    Identifier itemId = ItemStackArgumentType.getItemStackArgument(context, "item").getRegistryEntry().registryKey().getValue();
                                     int amount = IntegerArgumentType.getInteger(context, "amount");
                                     ConfigManager.getConfig().itemLimits.put(itemId.toString(), amount);
                                     ConfigManager.save();
@@ -265,7 +304,7 @@ public class CombatMod implements ModInitializer {
                     .then(CommandManager.argument("item", ItemStackArgumentType.itemStack(registryAccess))
                         .then(CommandManager.argument("seconds", DoubleArgumentType.doubleArg(0.0))
                             .executes(context -> {
-                                Identifier itemId = ItemStackArgumentType.getItemStackArgument(context, "item").getItem().getRegistryEntry().registryKey().getValue();
+                                Identifier itemId = ItemStackArgumentType.getItemStackArgument(context, "item").getRegistryEntry().registryKey().getValue();
                                 double seconds = DoubleArgumentType.getDouble(context, "seconds");
                                 ConfigManager.getConfig().itemCooldowns.put(itemId.toString(), seconds);
                                 ConfigManager.save();

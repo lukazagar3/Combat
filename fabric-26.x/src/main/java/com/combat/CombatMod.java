@@ -34,6 +34,8 @@ public class CombatMod implements ModInitializer {
     public static final Map<UUID, Long> immunityExpiration = new HashMap<>();
     public static final Map<UUID, Long> tridentRiptideExpiration = new HashMap<>();
     public static final Map<UUID, Long> spearLungeExpiration = new HashMap<>();
+    public static final java.util.Set<UUID> pendingPearlThrows = new java.util.HashSet<>();
+    public static final java.util.Set<UUID> pendingSpearUses = new java.util.HashSet<>();
     public static final java.util.Set<String> notifiedOwnership = new java.util.HashSet<>();
 
     public static int countItemInPlayer(ServerPlayer player, String itemId) {
@@ -200,19 +202,24 @@ public class CombatMod implements ModInitializer {
                 String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
 
                 if ("minecraft:spear".equals(itemId) || "minecraft:netherite_spear".equals(itemId)) {
-                    Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
-                    if (cooldownSec != null && cooldownSec > 0.0) {
-                        UUID uuid = serverPlayer.getUUID();
-                        long now = System.currentTimeMillis();
-                        Long expiration = spearLungeExpiration.get(uuid);
-                        if (expiration != null && now < expiration) {
-                            double remaining = (expiration - now) / 1000.0;
-                            serverPlayer.sendSystemMessage(Component.literal(String.format("Spear Lunge is on cooldown for %.1fs!", remaining)).withStyle(ChatFormatting.RED));
-                            serverPlayer.getCooldowns().addCooldown(stack, (int)(remaining * 20));
-                            return net.minecraft.world.InteractionResult.FAIL;
+                    UUID uuid = serverPlayer.getUUID();
+                    long now = System.currentTimeMillis();
+                    Long combatEnd = combatTagExpiration.get(uuid);
+                    boolean inCombat = combatEnd != null && now < combatEnd;
+                    if (inCombat) {
+                        Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
+                        if (cooldownSec != null && cooldownSec > 0.0) {
+                            Long expiration = spearLungeExpiration.get(uuid);
+                            if (expiration != null && now < expiration) {
+                                double remaining = (expiration - now) / 1000.0;
+                                serverPlayer.sendSystemMessage(Component.literal(String.format("Spear Lunge is on cooldown for %.1fs!", remaining)).withStyle(ChatFormatting.RED));
+                                serverPlayer.getCooldowns().addCooldown(stack, (int)(remaining * 20));
+                                return net.minecraft.world.InteractionResult.FAIL;
+                            }
+                            if (!serverPlayer.getCooldowns().isOnCooldown(stack)) {
+                                pendingSpearUses.add(uuid);
+                            }
                         }
-                        spearLungeExpiration.put(uuid, now + (long)(cooldownSec * 1000L));
-                        serverPlayer.getCooldowns().addCooldown(stack, (int)(cooldownSec * 20));
                     }
                 } else if ("minecraft:ender_pearl".equals(itemId)) {
                     UUID uuid = serverPlayer.getUUID();
@@ -222,12 +229,44 @@ public class CombatMod implements ModInitializer {
                     if (inCombat) {
                         Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:ender_pearl");
                         if (cooldownSec != null && cooldownSec > 0.0) {
-                            serverPlayer.getCooldowns().addCooldown(stack, (int)(cooldownSec * 20));
+                            if (!serverPlayer.getCooldowns().isOnCooldown(stack)) {
+                                pendingPearlThrows.add(uuid);
+                            }
                         }
                     }
                 }
             }
             return net.minecraft.world.InteractionResult.PASS;
+        });
+
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+            for (UUID uuid : pendingPearlThrows) {
+                ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+                if (player != null) {
+                    ItemStack pearl = new ItemStack(net.minecraft.world.item.Items.ENDER_PEARL);
+                    if (player.getCooldowns().isOnCooldown(pearl)) {
+                        Double pearlSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:ender_pearl");
+                        if (pearlSec != null && pearlSec > 0.0) {
+                            player.getCooldowns().addCooldown(pearl, (int)(pearlSec * 20));
+                        }
+                    }
+                }
+            }
+            pendingPearlThrows.clear();
+
+            for (UUID uuid : pendingSpearUses) {
+                ServerPlayer player = server.getPlayerList().getPlayer(uuid);
+                if (player != null) {
+                    Double spearSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
+                    if (spearSec != null && spearSec > 0.0) {
+                        long now = System.currentTimeMillis();
+                        spearLungeExpiration.put(uuid, now + (long)(spearSec * 1000L));
+                        ItemStack mainHand = player.getMainHandItem();
+                        if (!mainHand.isEmpty()) player.getCooldowns().addCooldown(mainHand, (int)(spearSec * 20));
+                    }
+                }
+            }
+            pendingSpearUses.clear();
         });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
