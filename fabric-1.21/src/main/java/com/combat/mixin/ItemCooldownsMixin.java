@@ -43,17 +43,17 @@ public class ItemCooldownsMixin implements CooldownsPlayerAccessor {
         }
 
         String itemId = Registries.ITEM.getId(stack.getItem()).toString();
-        if ("minecraft:ender_pearl".equals(itemId) || "minecraft:mace".equals(itemId) || 
-            "minecraft:trident".equals(itemId) || "minecraft:spear".equals(itemId) || "minecraft:netherite_spear".equals(itemId)) {
-            
-            Double customCooldown = ConfigManager.getConfig().itemCooldowns.get(itemId);
-            if (customCooldown != null && customCooldown > 0.0) {
-                int customTicks = (int) (customCooldown * 20);
-                if (duration != customTicks) {
-                    ItemCooldownManager manager = (ItemCooldownManager)(Object)this;
-                    manager.set(stack, customTicks);
-                    ci.cancel();
-                }
+        Double customCooldown = ConfigManager.getConfig().itemCooldowns.get(itemId);
+        if (customCooldown == null && itemId.contains("spear")) {
+            customCooldown = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
+        }
+
+        if (customCooldown != null && customCooldown > 0.0) {
+            int customTicks = (int) (customCooldown * 20);
+            if (duration != customTicks) {
+                ItemCooldownManager manager = (ItemCooldownManager)(Object)this;
+                manager.set(stack, customTicks);
+                ci.cancel();
             }
         }
     }

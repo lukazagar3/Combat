@@ -4,6 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 public class PlayerData {
+    public String playerName = "";
     public String rank = "unranked";
     public int rankPosition = -1; // -1 for unranked, 1 for #1, etc.
     public Map<String, Long> dailyPlaytimeMs = new HashMap<>(); // "yyyy-MM-dd" -> playtime in ms

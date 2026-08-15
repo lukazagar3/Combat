@@ -3,6 +3,7 @@ package com.combat.mixin;
 import com.combat.ConfigManager;
 import com.combat.DataManager;
 import com.combat.PlayerData;
+import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.entity.attribute.EntityAttributeInstance;
 import net.minecraft.entity.attribute.EntityAttributeModifier;
@@ -14,23 +15,21 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
+import net.minecraft.registry.Registries;
+import net.minecraft.item.ItemStack;
+import net.minecraft.server.MinecraftServer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-import net.minecraft.registry.Registries;
-import net.minecraft.item.ItemStack;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityMixin {
-    // In-memory timers for combat tag & immunity
-
 
     private static final Identifier HEALTH_MODIFIER_ID = Identifier.of("combat", "rank_health_boost");
 
@@ -39,25 +38,30 @@ public abstract class LivingEntityMixin {
         Object self = this;
         if (!(self instanceof ServerPlayerEntity targetPlayer)) return;
 
-        // Immunity only applies to PvP (damage from another player)
-        if (source.getAttacker() instanceof ServerPlayerEntity attackerPlayer) {
+        Entity rawAttacker = source.getAttacker() != null ? source.getAttacker() : source.getSource();
+        if (rawAttacker instanceof ServerPlayerEntity attackerPlayer) {
             if (isImmune(targetPlayer.getUuid())) {
+                targetPlayer.sendMessage(Text.literal("You are immune to PvP damage!").formatted(Formatting.GREEN), false);
                 cir.setReturnValue(false);
                 return;
             }
             if (isImmune(attackerPlayer.getUuid())) {
+                attackerPlayer.sendMessage(Text.literal("You cannot attack while immune!").formatted(Formatting.RED), false);
                 cir.setReturnValue(false);
                 return;
             }
 
-            // Apply Combat Tag to both players
             long combatEndTime = System.currentTimeMillis() + ConfigManager.getConfig().combatLogSeconds * 1000L;
             com.combat.CombatMod.combatTagExpiration.put(targetPlayer.getUuid(), combatEndTime);
             com.combat.CombatMod.combatTagExpiration.put(attackerPlayer.getUuid(), combatEndTime);
 
-            net.minecraft.item.ItemStack mainHand = attackerPlayer.getStackInHand(net.minecraft.util.Hand.MAIN_HAND);
-            if (mainHand.isOf(net.minecraft.item.Items.MACE)) {
-                attackerPlayer.getItemCooldownManager().set(new net.minecraft.item.ItemStack(net.minecraft.item.Items.MACE), 1);
+            // Trigger Mace Smash Cooldown AFTER damage is dealt!
+            ItemStack mainHand = attackerPlayer.getStackInHand(net.minecraft.util.Hand.MAIN_HAND);
+            if (mainHand.isOf(net.minecraft.item.Items.MACE) && attackerPlayer.fallDistance > 1.5F) {
+                Double maceSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:mace");
+                if (maceSec != null && maceSec > 0.0) {
+                    attackerPlayer.getItemCooldownManager().set(mainHand, (int)(maceSec * 20));
+                }
             }
         }
     }
@@ -67,11 +71,10 @@ public abstract class LivingEntityMixin {
         Object self = this;
         if (!(self instanceof ServerPlayerEntity victim)) return;
 
-        // Clear their combat tag on death
         com.combat.CombatMod.combatTagExpiration.remove(victim.getUuid());
 
-        // Immunity only starts if killed by a player
-        if (damageSource.getAttacker() instanceof ServerPlayerEntity killer) {
+        Entity rawAttacker = damageSource.getAttacker() != null ? damageSource.getAttacker() : damageSource.getSource();
+        if (rawAttacker instanceof ServerPlayerEntity killer) {
             int immunitySeconds = ConfigManager.getConfig().immunitySeconds;
             if (immunitySeconds > 0) {
                 long immunityEndTime = System.currentTimeMillis() + immunitySeconds * 1000L;
@@ -81,7 +84,6 @@ public abstract class LivingEntityMixin {
             handleKill(killer, victim);
         }
 
-        // Release world-limit ownership tracking
         com.combat.CombatMod.notifiedOwnership.removeIf(key -> key.startsWith(victim.getUuid().toString()));
     }
 
@@ -99,11 +101,18 @@ public abstract class LivingEntityMixin {
             com.combat.CombatMod.combatTagExpiration.remove(uuid);
         }
 
-        if (isImmune(uuid)) {
-            player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 4, false, false, false));
+        Long immunityEnd = com.combat.CombatMod.immunityExpiration.get(uuid);
+        if (immunityEnd != null) {
+            if (now < immunityEnd) {
+                int remainingSeconds = (int) Math.ceil((immunityEnd - now) / 1000.0);
+                player.sendMessage(Text.literal("PvP Immunity Active: " + remainingSeconds + "s").formatted(Formatting.GREEN, Formatting.BOLD), true);
+                player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 4, false, false, false));
+            } else {
+                com.combat.CombatMod.immunityExpiration.remove(uuid);
+                player.sendMessage(Text.literal("PvP Immunity expired.").formatted(Formatting.YELLOW), false);
+            }
         }
 
-        // 1. Render Combat Tag ActionBar
         Long combatEnd = com.combat.CombatMod.combatTagExpiration.get(uuid);
         if (combatEnd != null) {
             if (now < combatEnd) {
@@ -115,90 +124,49 @@ public abstract class LivingEntityMixin {
             }
         }
 
-        // 2. Apply Ranked Buffs (Extra Max Health + Potion Effects)
-        PlayerData data = DataManager.getOrCreatePlayerData(uuid);
-        int pos = data.rankPosition;
+        if (ConfigManager.getConfig().rankedSystemEnabled) {
+            com.combat.CombatMod.assignRankIfUnranked(player);
 
-        // Max Health Boost
-        EntityAttributeInstance maxHealthAttr = player.getAttributeInstance(EntityAttributes.MAX_HEALTH);
-        if (maxHealthAttr != null) {
-            EntityAttributeModifier existing = maxHealthAttr.getModifier(HEALTH_MODIFIER_ID);
-            int targetHealth = (ConfigManager.getConfig().rankedSystemEnabled && pos >= 1) ? Math.max(2, 40 - 2 * (pos - 1)) : 20;
-            int hpBoost = targetHealth - 20;
+            PlayerData data = DataManager.getOrCreatePlayerData(uuid);
+            int pos = data.rankPosition;
 
-            if (existing == null || (int) existing.value() != hpBoost) {
-                maxHealthAttr.removeModifier(HEALTH_MODIFIER_ID);
-                if (hpBoost != 0) {
-                    maxHealthAttr.addTemporaryModifier(new EntityAttributeModifier(HEALTH_MODIFIER_ID, hpBoost, EntityAttributeModifier.Operation.ADD_VALUE));
-                }
-                if (player.getHealth() > player.getMaxHealth()) {
-                    player.setHealth(player.getMaxHealth());
-                }
-            }
-        }
-
-        // Permanent Potion Effects
-        if (ConfigManager.getConfig().rankedSystemEnabled && pos >= 1 && pos <= 10) {
-            java.util.List<String> effects = ConfigManager.getConfig().rankPotionEffects.get(pos);
-            if (effects != null) {
-                for (String effectStr : effects) {
-                    if ("speed".equalsIgnoreCase(effectStr)) {
-                        player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 0, false, false, false));
-                    } else if ("strength".equalsIgnoreCase(effectStr)) {
-                        player.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 40, 0, false, false, false));
-                    }
-                }
-            }
-        }
-
-        // 3. Enforce World Item Limits and Ownership
-        for (Map.Entry<String, com.combat.CombatConfig.WorldLimitedItem> entry : ConfigManager.getConfig().worldLimits.entrySet()) {
-            String itemId = entry.getKey();
-            int maxCount = entry.getValue().maxCount;
-            String ownerKey = uuid.toString() + ":" + itemId;
-
-            boolean hasItem = false;
-            for (int i = 0; i < player.getInventory().size(); i++) {
-                ItemStack stack = player.getInventory().getStack(i);
-                if (Registries.ITEM.getId(stack.getItem()).toString().equals(itemId)) {
-                    hasItem = true;
-                    break;
-                }
-            }
-
-            if (hasItem) {
-                if (!DataManager.isOwner(uuid, itemId)) {
-                    if (DataManager.tryAcquire(uuid, itemId, maxCount)) {
-                        if (!com.combat.CombatMod.notifiedOwnership.contains(ownerKey)) {
-                            com.combat.CombatMod.notifiedOwnership.add(ownerKey);
-                            final String displayItem = itemId.replace("minecraft:", "");
-                            final String playerName = player.getName().getString();
-                            if (com.combat.CombatMod.serverInstance != null) {
-                                com.combat.CombatMod.serverInstance.getPlayerManager().getPlayerList().forEach(p ->
-                                    p.sendMessage(Text.literal("[")
-                                        .append(Text.literal("World Limit").formatted(Formatting.YELLOW))
-                                        .append(Text.literal("] ").formatted(Formatting.GOLD))
-                                        .append(Text.literal(playerName).formatted(Formatting.WHITE))
-                                        .append(Text.literal(" is now the owner of: ").formatted(Formatting.GRAY))
-                                        .append(Text.literal(displayItem).formatted(Formatting.AQUA)), false)
-                                );
+            if (pos != -1) {
+                double boostHP = Math.max(0, (11 - pos) * 2.0);
+                EntityAttributeInstance maxHealthAttr = player.getAttributeInstance(EntityAttributes.MAX_HEALTH);
+                if (maxHealthAttr != null) {
+                    EntityAttributeModifier existing = maxHealthAttr.getModifier(HEALTH_MODIFIER_ID);
+                    if (existing == null || existing.value() != boostHP) {
+                        if (existing != null) {
+                            maxHealthAttr.removeModifier(HEALTH_MODIFIER_ID);
+                        }
+                        if (boostHP > 0) {
+                            maxHealthAttr.addPersistentModifier(new EntityAttributeModifier(
+                                HEALTH_MODIFIER_ID,
+                                boostHP,
+                                EntityAttributeModifier.Operation.ADD_VALUE
+                            ));
+                            if (player.getHealth() < player.getMaxHealth()) {
+                                player.setHealth(player.getMaxHealth());
                             }
                         }
-                    } else {
-                        if (!com.combat.CombatMod.notifiedOwnership.contains("denied:" + ownerKey)) {
-                            com.combat.CombatMod.notifiedOwnership.add("denied:" + ownerKey);
-                            player.sendMessage(Text.literal("World limit reached for ")
-                                .append(Text.literal(itemId.replace("minecraft:", "")).formatted(Formatting.YELLOW))
-                                .append(Text.literal("!").formatted(Formatting.RED)), false);
-                        }
                     }
                 }
-            } else {
-                if (DataManager.isOwner(uuid, itemId)) {
-                    DataManager.releaseOwnership(uuid, itemId);
-                    com.combat.CombatMod.notifiedOwnership.remove(ownerKey);
-                    com.combat.CombatMod.notifiedOwnership.remove("denied:" + ownerKey);
+
+                if (pos == 1) {
+                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 40, 0, false, false, true));
+                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 0, false, false, true));
+                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 0, false, false, true));
+                } else if (pos == 2) {
+                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 0, false, false, true));
+                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 0, false, false, true));
+                } else if (pos == 3) {
+                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 0, false, false, true));
                 }
+            }
+        } else {
+            EntityAttributeInstance maxHealthAttr = player.getAttributeInstance(EntityAttributes.MAX_HEALTH);
+            if (maxHealthAttr != null && maxHealthAttr.getModifier(HEALTH_MODIFIER_ID) != null) {
+                maxHealthAttr.removeModifier(HEALTH_MODIFIER_ID);
             }
         }
     }
@@ -225,11 +193,10 @@ public abstract class LivingEntityMixin {
 
                 DataManager.save();
 
-                com.combat.CombatMod.serverInstance.getPlayerManager().broadcast(
+                com.combat.CombatMod.serverInstance.getPlayerManager().getPlayerList().forEach(p -> p.sendMessage(
                     Text.literal(killer.getName().getString() + " (now Rank #" + victimRank + ") killed " +
-                                 victim.getName().getString() + " and took their rank!").formatted(Formatting.GOLD),
-                    false
-                );
+                                 victim.getName().getString() + " and took their rank!").formatted(Formatting.GOLD), false
+                ));
 
                 updatePlayerNametag(killer);
                 updatePlayerNametag(victim);
@@ -246,10 +213,10 @@ public abstract class LivingEntityMixin {
                 killerData.rank = "Rank #" + nextRank;
                 DataManager.save();
 
-                com.combat.CombatMod.serverInstance.getPlayerManager().broadcast(
-                    Text.literal(killer.getName().getString() + " achieved Rank #" + nextRank + "!").formatted(Formatting.GOLD),
-                    false
-                );
+                final int finalNextRank = nextRank;
+                com.combat.CombatMod.serverInstance.getPlayerManager().getPlayerList().forEach(p -> p.sendMessage(
+                    Text.literal(killer.getName().getString() + " achieved Rank #" + finalNextRank + "!").formatted(Formatting.GOLD), false
+                ));
 
                 updatePlayerNametag(killer);
             }
@@ -257,9 +224,9 @@ public abstract class LivingEntityMixin {
     }
 
     private void updatePlayerNametag(ServerPlayerEntity player) {
-        net.minecraft.server.MinecraftServer server = com.combat.CombatMod.serverInstance;
+        MinecraftServer server = com.combat.CombatMod.serverInstance;
         if (server == null) return;
-        net.minecraft.scoreboard.Scoreboard scoreboard = server.getScoreboard();
+        net.minecraft.scoreboard.ServerScoreboard scoreboard = server.getScoreboard();
         PlayerData data = DataManager.getOrCreatePlayerData(player.getUuid());
         String teamName = "c_team_" + player.getUuid().toString().substring(0, 12);
 
@@ -269,7 +236,7 @@ public abstract class LivingEntityMixin {
         }
 
         if (!ConfigManager.getConfig().rankedSystemEnabled) {
-            team.setPrefix(Text.literal("").formatted(Formatting.GOLD));
+            team.setPrefix(Text.literal(""));
         } else {
             String prefixStr = data.rankPosition == -1 ? "[Unranked] " : "[Rank #" + data.rankPosition + "] ";
             team.setPrefix(Text.literal(prefixStr).formatted(Formatting.GOLD));

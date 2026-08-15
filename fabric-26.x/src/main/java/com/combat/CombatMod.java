@@ -29,6 +29,46 @@ import java.util.Map;
 import java.util.HashMap;
 
 public class CombatMod implements ModInitializer {
+    public static void assignRankIfUnranked(ServerPlayer player) {
+        if (!ConfigManager.getConfig().rankedSystemEnabled) return;
+        PlayerData data = DataManager.getOrCreatePlayerData(player.getUUID());
+        if (data.rankPosition == -1) {
+            int nextRank = 1;
+            for (PlayerData pd : DataManager.getAllPlayersData().values()) {
+                if (pd.rankPosition >= nextRank) {
+                    nextRank = pd.rankPosition + 1;
+                }
+            }
+            data.rankPosition = nextRank;
+            data.rank = "Rank #" + nextRank;
+            data.playerName = player.getName().getString();
+            DataManager.save();
+
+            player.sendSystemMessage(Component.literal("You joined the server and received Rank #" + nextRank + "!").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+            updatePlayerNametag(player);
+        }
+    }
+
+    public static void updatePlayerNametag(ServerPlayer player) {
+        MinecraftServer server = serverInstance;
+        if (server == null) return;
+        net.minecraft.world.scores.Scoreboard scoreboard = server.getScoreboard();
+        PlayerData data = DataManager.getOrCreatePlayerData(player.getUUID());
+        String teamName = "c_team_" + player.getUUID().toString().substring(0, 12);
+
+        net.minecraft.world.scores.PlayerTeam team = scoreboard.getPlayerTeam(teamName);
+        if (team == null) {
+            team = scoreboard.addPlayerTeam(teamName);
+        }
+
+        if (!ConfigManager.getConfig().rankedSystemEnabled) {
+            team.setPlayerPrefix(Component.literal(""));
+        } else {
+            String prefixStr = data.rankPosition == -1 ? "[Unranked] " : "[Rank #" + data.rankPosition + "] ";
+            team.setPlayerPrefix(Component.literal(prefixStr).withStyle(ChatFormatting.GOLD));
+        }
+        scoreboard.addPlayerToTeam(player.getScoreboardName(), team);
+    }
     public static MinecraftServer serverInstance;
     public static final Map<UUID, Long> combatTagExpiration = new HashMap<>();
     public static final Map<UUID, Long> immunityExpiration = new HashMap<>();
@@ -129,6 +169,12 @@ public class CombatMod implements ModInitializer {
     }
 
     public static void checkAndEnforceItemLimits(ServerPlayer player) {
+        if (ConfigManager.getConfig().limitsOnlyInCombat) {
+            UUID uuid = player.getUUID();
+            Long combatEnd = combatTagExpiration.get(uuid);
+            boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
+            if (!inCombat) return;
+        }
         if (ConfigManager.getConfig().itemLimits.isEmpty()) return;
 
         for (Map.Entry<String, Integer> entry : ConfigManager.getConfig().itemLimits.entrySet()) {
@@ -179,17 +225,8 @@ public class CombatMod implements ModInitializer {
             if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
                 ItemStack mainHand = serverPlayer.getItemInHand(hand);
                 if (mainHand.is(net.minecraft.world.item.Items.MACE)) {
-                    if (!(entity instanceof net.minecraft.world.entity.player.Player)) {
-                        return net.minecraft.world.InteractionResult.PASS;
-                    }
                     if (serverPlayer.getCooldowns().isOnCooldown(mainHand)) {
                         return net.minecraft.world.InteractionResult.FAIL;
-                    }
-                    if (serverPlayer.fallDistance > 1.5F) {
-                        Double maceSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:mace");
-                        if (maceSec != null && maceSec > 0.0) {
-                            serverPlayer.getCooldowns().addCooldown(mainHand, (int)(maceSec * 20));
-                        }
                     }
                 }
             }
@@ -201,13 +238,17 @@ public class CombatMod implements ModInitializer {
                 ItemStack stack = serverPlayer.getItemInHand(hand);
                 String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
 
-                if ("minecraft:spear".equals(itemId) || "minecraft:netherite_spear".equals(itemId)) {
+                if ("minecraft:spear".equals(itemId) || "minecraft:netherite_spear".equals(itemId) || itemId.contains("spear")) {
                     UUID uuid = serverPlayer.getUUID();
                     long now = System.currentTimeMillis();
                     Long combatEnd = combatTagExpiration.get(uuid);
                     boolean inCombat = combatEnd != null && now < combatEnd;
                     if (inCombat) {
-                        Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
+                        Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get(itemId);
+                        if (cooldownSec == null || cooldownSec <= 0.0) {
+                            cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
+                        }
+
                         if (cooldownSec != null && cooldownSec > 0.0) {
                             Long expiration = spearLungeExpiration.get(uuid);
                             if (expiration != null && now < expiration) {
@@ -216,9 +257,10 @@ public class CombatMod implements ModInitializer {
                                 serverPlayer.getCooldowns().addCooldown(stack, (int)(remaining * 20));
                                 return net.minecraft.world.InteractionResult.FAIL;
                             }
-                            if (!serverPlayer.getCooldowns().isOnCooldown(stack)) {
-                                pendingSpearUses.add(uuid);
-                            }
+
+                            // Apply Spear Lunge Cooldown
+                            spearLungeExpiration.put(uuid, now + (long)(cooldownSec * 1000L));
+                            serverPlayer.getCooldowns().addCooldown(stack, (int)(cooldownSec * 20));
                         }
                     }
                 } else if ("minecraft:ender_pearl".equals(itemId)) {
@@ -271,8 +313,49 @@ public class CombatMod implements ModInitializer {
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
             dispatcher.register(Commands.literal("combat")
-                .requires(source -> source.permissions().hasPermission(new net.minecraft.server.permissions.Permission.HasCommandLevel(net.minecraft.server.permissions.PermissionLevel.GAMEMASTERS)))
+                .then(Commands.literal("rank")
+                    .executes(context -> {
+                        ServerPlayer player = context.getSource().getPlayerOrException();
+                        PlayerData data = DataManager.getOrCreatePlayerData(player.getUUID());
+                        if (data.rankPosition == -1) {
+                            context.getSource().sendSystemMessage(Component.literal("Your Rank: Unranked").withStyle(ChatFormatting.YELLOW));
+                        } else {
+                            int pos = data.rankPosition;
+                            int extraHearts = Math.max(0, 11 - pos);
+                            context.getSource().sendSystemMessage(Component.literal("Your Rank: Rank #" + pos + " (+" + extraHearts + " Extra Hearts)").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+                        }
+                        return 1;
+                    })
+                    .then(Commands.literal("top")
+                        .executes(context -> {
+                            java.util.List<Map.Entry<UUID, PlayerData>> rankedList = new java.util.ArrayList<>();
+                            for (Map.Entry<UUID, PlayerData> entry : DataManager.getAllPlayersData().entrySet()) {
+                                if (entry.getValue().rankPosition > 0) {
+                                    rankedList.add(entry);
+                                }
+                            }
+                            rankedList.sort(java.util.Comparator.comparingInt(e -> e.getValue().rankPosition));
+
+                            context.getSource().sendSystemMessage(Component.literal("=== Top 20 Ranked Players ===").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+                            if (rankedList.isEmpty()) {
+                                context.getSource().sendSystemMessage(Component.literal("No ranked players found.").withStyle(ChatFormatting.GRAY));
+                            } else {
+                                int limit = Math.min(20, rankedList.size());
+                                for (int i = 0; i < limit; i++) {
+                                    Map.Entry<UUID, PlayerData> entry = rankedList.get(i);
+                                    UUID uuid = entry.getKey();
+                                    PlayerData pd = entry.getValue();
+                                    ServerPlayer p = serverInstance != null ? serverInstance.getPlayerList().getPlayer(uuid) : null;
+                                    String name = p != null ? p.getName().getString() : (pd.playerName != null && !pd.playerName.isEmpty() ? pd.playerName : uuid.toString().substring(0, 8));
+                                    context.getSource().sendSystemMessage(Component.literal((i + 1) + ". " + name + " - Rank #" + pd.rankPosition).withStyle(ChatFormatting.YELLOW));
+                                }
+                            }
+                            return 1;
+                        })
+                    )
+                )
                 .then(Commands.literal("menu")
+                    .requires(source -> source.permissions().hasPermission(new net.minecraft.server.permissions.Permission.HasCommandLevel(net.minecraft.server.permissions.PermissionLevel.GAMEMASTERS)))
                     .executes(context -> {
                         ServerPlayer player = context.getSource().getPlayerOrException();
                         new com.combat.gui.CombatMenuGui(player).open();
@@ -280,6 +363,7 @@ public class CombatMod implements ModInitializer {
                     })
                 )
                 .then(Commands.literal("limit")
+                    .requires(source -> source.permissions().hasPermission(new net.minecraft.server.permissions.Permission.HasCommandLevel(net.minecraft.server.permissions.PermissionLevel.GAMEMASTERS)))
                     .then(Commands.literal("set")
                         .then(Commands.argument("item", ItemArgument.item(registryAccess))
                             .then(Commands.argument("amount", IntegerArgumentType.integer(0))
