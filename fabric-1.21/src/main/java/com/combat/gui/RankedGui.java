@@ -34,6 +34,16 @@ public class RankedGui extends ChestGui {
         back.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Back to Main Menu").formatted(Formatting.YELLOW));
         inventory.setStack(18, back);
 
+        boolean effectsEnabled = ConfigManager.getConfig().topRanksEffectsEnabled;
+        ItemStack effectsToggle = new ItemStack(Items.BREWING_STAND);
+        effectsToggle.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Top 3 Rank Effects").formatted(Formatting.LIGHT_PURPLE, Formatting.BOLD));
+        List<Text> effectsLore = new ArrayList<>();
+        effectsLore.add(Text.literal("Status: ").formatted(Formatting.GRAY)
+            .append(effectsEnabled ? Text.literal("ENABLED").formatted(Formatting.GREEN, Formatting.BOLD) : Text.literal("DISABLED").formatted(Formatting.RED, Formatting.BOLD)));
+        effectsLore.add(Text.literal("Click to Toggle Effects").formatted(Formatting.YELLOW, Formatting.ITALIC));
+        effectsToggle.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(effectsLore));
+        inventory.setStack(22, effectsToggle);
+
         ItemStack toggle = new ItemStack(ConfigManager.getConfig().rankedSystemEnabled ? Items.LIME_DYE : Items.GRAY_DYE);
         toggle.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Ranked System: " + 
             (ConfigManager.getConfig().rankedSystemEnabled ? "ENABLED" : "DISABLED"))
@@ -44,7 +54,7 @@ public class RankedGui extends ChestGui {
         inventory.setStack(26, toggle);
 
         for (int pos = 1; pos <= 10; pos++) {
-            int slot = (pos <= 9) ? (8 + pos) : 22;
+            int slot = (pos <= 9) ? (8 + pos) : 23;
             int targetHealth = Math.max(2, 40 - 2 * (pos - 1));
             List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new ArrayList<>());
 
@@ -66,6 +76,13 @@ public class RankedGui extends ChestGui {
     protected void handleSlotClick(int slotId, int clickData, SlotActionType actionType) {
         if (slotId == 18) {
             new CombatMenuGui(player).open();
+            return;
+        }
+
+        if (slotId == 22) {
+            ConfigManager.getConfig().topRanksEffectsEnabled = !ConfigManager.getConfig().topRanksEffectsEnabled;
+            ConfigManager.save();
+            setupItems();
             return;
         }
 
@@ -95,75 +112,12 @@ public class RankedGui extends ChestGui {
         int selectedPos = -1;
         if (slotId >= 9 && slotId <= 17) {
             selectedPos = slotId - 8;
-        } else if (slotId == 22) {
+        } else if (slotId == 23) {
             selectedPos = 10;
         }
 
         if (selectedPos != -1) {
-            final int pos = selectedPos;
-            new ChestGui(player, "Buffs for Position #" + pos, 1) {
-                @Override
-                protected void setupItems() {
-                    ItemStack backArrow = new ItemStack(Items.ARROW);
-                    backArrow.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Back to Ranks").formatted(Formatting.YELLOW));
-                    inventory.setStack(0, backArrow);
-
-                    int targetHealth = Math.max(2, 40 - 2 * (pos - 1));
-                    ItemStack hpItem = new ItemStack(Items.APPLE);
-                    hpItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Dynamic Max Health").formatted(Formatting.RED));
-                    List<Text> hpLore = new ArrayList<>();
-                    hpLore.add(Text.literal("Dynamic Health: " + (targetHealth / 2.0) + " hearts (" + targetHealth + " HP)").formatted(Formatting.GRAY));
-                    hpLore.add(Text.literal("Automatically calculated based on rank").formatted(Formatting.DARK_GRAY));
-                    hpItem.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(hpLore));
-                    inventory.setStack(2, hpItem);
-
-                    List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new ArrayList<>());
-                    boolean hasSpeed = effects.contains("speed");
-                    ItemStack speedItem = new ItemStack(Items.SUGAR);
-                    speedItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Speed Effect").formatted(Formatting.AQUA));
-                    List<Text> speedLore = new ArrayList<>();
-                    speedLore.add(Text.literal("Status: ").formatted(Formatting.GRAY)
-                        .append(hasSpeed ? Text.literal("ACTIVE").formatted(Formatting.GREEN) : Text.literal("INACTIVE").formatted(Formatting.RED)));
-                    speedLore.add(Text.literal("Click to Toggle").formatted(Formatting.YELLOW));
-                    speedItem.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(speedLore));
-                    inventory.setStack(4, speedItem);
-
-                    boolean hasStrength = effects.contains("strength");
-                    ItemStack strengthItem = new ItemStack(Items.BLAZE_POWDER);
-                    strengthItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Strength Effect").formatted(Formatting.DARK_RED));
-                    List<Text> strengthLore = new ArrayList<>();
-                    strengthLore.add(Text.literal("Status: ").formatted(Formatting.GRAY)
-                        .append(hasStrength ? Text.literal("ACTIVE").formatted(Formatting.GREEN) : Text.literal("INACTIVE").formatted(Formatting.RED)));
-                    strengthLore.add(Text.literal("Click to Toggle").formatted(Formatting.YELLOW));
-                    strengthItem.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(strengthLore));
-                    inventory.setStack(6, strengthItem);
-                }
-
-                @Override
-                protected void handleSlotClick(int subSlotId, int clickData, SlotActionType actionType) {
-                    if (subSlotId == 0) {
-                        new RankedGui(player).open();
-                    } else if (subSlotId == 4) {
-                        List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new ArrayList<>());
-                        if (effects.contains("speed")) {
-                            effects.remove("speed");
-                        } else {
-                            effects.add("speed");
-                        }
-                        ConfigManager.save();
-                        setupItems();
-                    } else if (subSlotId == 6) {
-                        List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new ArrayList<>());
-                        if (effects.contains("strength")) {
-                            effects.remove("strength");
-                        } else {
-                            effects.add("strength");
-                        }
-                        ConfigManager.save();
-                        setupItems();
-                    }
-                }
-            }.open();
+            new RankPositionBuffsGui(player, selectedPos).open();
         }
     }
 }

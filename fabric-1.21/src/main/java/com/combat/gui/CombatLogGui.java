@@ -14,14 +14,13 @@ import java.util.List;
 public class CombatLogGui extends ChestGui {
 
     public CombatLogGui(ServerPlayerEntity player) {
-        super(player, "Combat & Immunity Settings", 3);
+        super(player, "Combat Settings", 3);
     }
 
     @Override
     protected void setupItems() {
         inventory.clear();
 
-        // Border
         ItemStack border = new ItemStack(Items.GRAY_STAINED_GLASS_PANE);
         border.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal(""));
         for (int i = 0; i < 9; i++) {
@@ -29,12 +28,10 @@ public class CombatLogGui extends ChestGui {
             inventory.setStack(18 + i, border);
         }
 
-        // Back
         ItemStack back = new ItemStack(Items.ARROW);
         back.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Back to Main Menu").formatted(Formatting.YELLOW));
         inventory.setStack(18, back);
 
-        // 1. Combat Log Timer
         ItemStack logTimer = new ItemStack(Items.REDSTONE);
         logTimer.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Combat Tag Timer").formatted(Formatting.RED, Formatting.BOLD));
         List<Text> logLore = new ArrayList<>();
@@ -43,7 +40,6 @@ public class CombatLogGui extends ChestGui {
         logTimer.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(logLore));
         inventory.setStack(10, logTimer);
 
-        // 2. Ender Chest Access in Combat
         boolean ecAllowed = ConfigManager.getConfig().allowEnderchestInCombat;
         ItemStack enderChest = new ItemStack(Items.ENDER_CHEST);
         enderChest.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Ender Chest Access").formatted(Formatting.LIGHT_PURPLE, Formatting.BOLD));
@@ -54,14 +50,25 @@ public class CombatLogGui extends ChestGui {
         enderChest.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(ecLore));
         inventory.setStack(12, enderChest);
 
-        // 3. Post-respawn Immunity Timer
-        ItemStack immunityTimer = new ItemStack(Items.GOLDEN_APPLE);
-        immunityTimer.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Immunity Timer").formatted(Formatting.GOLD, Formatting.BOLD));
-        List<Text> immunityLore = new ArrayList<>();
-        immunityLore.add(Text.literal("Current: " + ConfigManager.getConfig().immunitySeconds + "s").formatted(Formatting.GRAY));
-        immunityLore.add(Text.literal("Click to Edit").formatted(Formatting.YELLOW, Formatting.ITALIC));
-        immunityTimer.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(immunityLore));
-        inventory.setStack(14, immunityTimer);
+        boolean elytraAllowed = ConfigManager.getConfig().allowElytraInCombat;
+        ItemStack elytra = new ItemStack(Items.ELYTRA);
+        elytra.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Equip Elytra in Combat").formatted(Formatting.AQUA, Formatting.BOLD));
+        List<Text> elytraLore = new ArrayList<>();
+        elytraLore.add(Text.literal("Status: ").formatted(Formatting.GRAY)
+            .append(elytraAllowed ? Text.literal("ENABLED").formatted(Formatting.GREEN, Formatting.BOLD) : Text.literal("DISABLED").formatted(Formatting.RED, Formatting.BOLD)));
+        elytraLore.add(Text.literal("Click to Toggle").formatted(Formatting.YELLOW, Formatting.ITALIC));
+        elytra.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(elytraLore));
+        inventory.setStack(14, elytra);
+
+        boolean fireworkAllowed = ConfigManager.getConfig().allowFireworksInCombat;
+        ItemStack firework = new ItemStack(Items.FIREWORK_ROCKET);
+        firework.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Firework Rockets in Combat").formatted(Formatting.DARK_GREEN, Formatting.BOLD));
+        List<Text> fireworkLore = new ArrayList<>();
+        fireworkLore.add(Text.literal("Status: ").formatted(Formatting.GRAY)
+            .append(fireworkAllowed ? Text.literal("ENABLED").formatted(Formatting.GREEN, Formatting.BOLD) : Text.literal("DISABLED").formatted(Formatting.RED, Formatting.BOLD)));
+        fireworkLore.add(Text.literal("Click to Toggle").formatted(Formatting.YELLOW, Formatting.ITALIC));
+        firework.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(fireworkLore));
+        inventory.setStack(16, firework);
     }
 
     @Override
@@ -89,25 +96,15 @@ public class CombatLogGui extends ChestGui {
         } else if (slotId == 12) {
             ConfigManager.getConfig().allowEnderchestInCombat = !ConfigManager.getConfig().allowEnderchestInCombat;
             ConfigManager.save();
-            setupItems(); // Refresh GUI
+            setupItems();
         } else if (slotId == 14) {
-            new AnvilInputGui(player, "Immunity Duration (sec)", String.valueOf(ConfigManager.getConfig().immunitySeconds)) {
-                @Override
-                protected void handleInput(String input) {
-                    try {
-                        int seconds = Integer.parseInt(input.trim());
-                        if (seconds < 0) {
-                            player.sendMessage(Text.literal("Cannot be negative!").formatted(Formatting.RED), false);
-                        } else {
-                            ConfigManager.getConfig().immunitySeconds = seconds;
-                            ConfigManager.save();
-                        }
-                    } catch (NumberFormatException e) {
-                        player.sendMessage(Text.literal("Invalid seconds!").formatted(Formatting.RED), false);
-                    }
-                    new CombatLogGui(player).open();
-                }
-            }.open();
+            ConfigManager.getConfig().allowElytraInCombat = !ConfigManager.getConfig().allowElytraInCombat;
+            ConfigManager.save();
+            setupItems();
+        } else if (slotId == 16) {
+            ConfigManager.getConfig().allowFireworksInCombat = !ConfigManager.getConfig().allowFireworksInCombat;
+            ConfigManager.save();
+            setupItems();
         }
     }
 }

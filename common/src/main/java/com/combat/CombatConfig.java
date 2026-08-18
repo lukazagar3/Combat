@@ -8,6 +8,9 @@ public class CombatConfig {
     public int combatLogSeconds = 15;
     public int immunitySeconds = 60;
     public boolean allowEnderchestInCombat = false;
+    public boolean allowElytraInCombat = true;
+    public boolean allowFireworksInCombat = true;
+    public boolean topRanksEffectsEnabled = true;
     public boolean limitsOnlyInCombat = false; // false = ALWAYS ON, true = ONLY IN COMBAT
     public boolean rankedSystemEnabled = true;
     public Map<String, Integer> itemLimits = new HashMap<>(); // item_id -> limit

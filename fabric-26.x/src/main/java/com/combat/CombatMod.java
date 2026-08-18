@@ -4,31 +4,33 @@ import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
-import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import com.mojang.brigadier.arguments.DoubleArgumentType;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
 import net.minecraft.commands.Commands;
 import net.minecraft.commands.arguments.item.ItemArgument;
 import net.minecraft.commands.arguments.item.ItemInput;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
-import net.minecraft.core.registries.BuiltInRegistries;
-import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.InteractionResult;
 import net.minecraft.ChatFormatting;
-import net.minecraft.world.item.ItemStack;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
+import com.mojang.brigadier.arguments.DoubleArgumentType;
 
 import java.io.File;
-import java.util.HashSet;
-import java.util.Set;
-import java.util.UUID;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.Set;
+import java.util.HashSet;
 
 public class CombatMod implements ModInitializer {
+    public static MinecraftServer serverInstance;
+    public static final Map<UUID, Long> combatTagExpiration = new HashMap<>();
+    public static final Map<UUID, Long> tridentRiptideExpiration = new HashMap<>();
+    public static final java.util.Set<UUID> pendingPearlThrows = new java.util.HashSet<>();
+    public static final java.util.Set<String> notifiedOwnership = new java.util.HashSet<>();
+
     public static void assignRankIfUnranked(ServerPlayer player) {
         if (!ConfigManager.getConfig().rankedSystemEnabled) return;
         PlayerData data = DataManager.getOrCreatePlayerData(player.getUUID());
@@ -69,14 +71,6 @@ public class CombatMod implements ModInitializer {
         }
         scoreboard.addPlayerToTeam(player.getScoreboardName(), team);
     }
-    public static MinecraftServer serverInstance;
-    public static final Map<UUID, Long> combatTagExpiration = new HashMap<>();
-    public static final Map<UUID, Long> immunityExpiration = new HashMap<>();
-    public static final Map<UUID, Long> tridentRiptideExpiration = new HashMap<>();
-    public static final Map<UUID, Long> spearLungeExpiration = new HashMap<>();
-    public static final java.util.Set<UUID> pendingPearlThrows = new java.util.HashSet<>();
-    public static final java.util.Set<UUID> pendingSpearUses = new java.util.HashSet<>();
-    public static final java.util.Set<String> notifiedOwnership = new java.util.HashSet<>();
 
     public static int countItemInPlayer(ServerPlayer player, String itemId) {
         int total = 0;
@@ -142,7 +136,6 @@ public class CombatMod implements ModInitializer {
             }
         }
 
-        // 1. Check Inventory Limit
         Integer invLimit = ConfigManager.getConfig().itemLimits.get(itemId);
         if (invLimit != null && invLimit >= 0) {
             int current = countItemInPlayer(player, itemId);
@@ -151,12 +144,11 @@ public class CombatMod implements ModInitializer {
             }
         }
 
-        // 2. Check World Limit
         CombatConfig.WorldLimitedItem wli = ConfigManager.getConfig().worldLimits.get(itemId);
         if (wli != null && wli.maxCount > 0) {
             int current = countItemInPlayer(player, itemId);
             if (current > 0) {
-                return true; // Already carrying one or more, cannot acquire extra!
+                return true;
             }
             if (!DataManager.isOwner(player.getUUID(), itemId)) {
                 if (!DataManager.tryAcquire(player.getUUID(), itemId, wli.maxCount)) {
@@ -194,7 +186,7 @@ public class CombatMod implements ModInitializer {
                         int count = stack.getCount();
                         int toDrop = Math.min(count, excess);
                         ItemStack dropStack = stack.split(toDrop);
-                        player.drop(dropStack, false); // Drop on ground, NEVER destroy!
+                        player.drop(dropStack, false);
                         excess -= toDrop;
                     }
                 }
@@ -214,6 +206,17 @@ public class CombatMod implements ModInitializer {
             File configDir = new File(server.getServerDirectory().toFile(), "config/combat");
             ConfigManager.init(configDir);
             DataManager.init(configDir);
+        });
+
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            ServerPlayer player = handler.getPlayer();
+            DataManager.onPlayerLogin(player.getUUID());
+            assignRankIfUnranked(player);
+        });
+
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
+            ServerPlayer player = handler.getPlayer();
+            DataManager.onPlayerLogout(player.getUUID());
         });
 
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -237,37 +240,23 @@ public class CombatMod implements ModInitializer {
             if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
                 ItemStack stack = serverPlayer.getItemInHand(hand);
                 String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
+                UUID uuid = serverPlayer.getUUID();
+                long now = System.currentTimeMillis();
+                Long combatEnd = combatTagExpiration.get(uuid);
+                boolean inCombat = combatEnd != null && now < combatEnd;
 
-                if ("minecraft:spear".equals(itemId) || "minecraft:netherite_spear".equals(itemId) || itemId.contains("spear")) {
-                    UUID uuid = serverPlayer.getUUID();
-                    long now = System.currentTimeMillis();
-                    Long combatEnd = combatTagExpiration.get(uuid);
-                    boolean inCombat = combatEnd != null && now < combatEnd;
-                    if (inCombat) {
-                        Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get(itemId);
-                        if (cooldownSec == null || cooldownSec <= 0.0) {
-                            cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
-                        }
-
-                        if (cooldownSec != null && cooldownSec > 0.0) {
-                            Long expiration = spearLungeExpiration.get(uuid);
-                            if (expiration != null && now < expiration) {
-                                double remaining = (expiration - now) / 1000.0;
-                                serverPlayer.sendSystemMessage(Component.literal(String.format("Spear Lunge is on cooldown for %.1fs!", remaining)).withStyle(ChatFormatting.RED));
-                                serverPlayer.getCooldowns().addCooldown(stack, (int)(remaining * 20));
-                                return net.minecraft.world.InteractionResult.FAIL;
-                            }
-
-                            // Apply Spear Lunge Cooldown
-                            spearLungeExpiration.put(uuid, now + (long)(cooldownSec * 1000L));
-                            serverPlayer.getCooldowns().addCooldown(stack, (int)(cooldownSec * 20));
-                        }
+                if (inCombat) {
+                    if (!ConfigManager.getConfig().allowElytraInCombat && stack.is(net.minecraft.world.item.Items.ELYTRA)) {
+                        serverPlayer.sendSystemMessage(Component.literal("Equipping Elytra is disabled during combat!").withStyle(ChatFormatting.RED));
+                        return net.minecraft.world.InteractionResult.FAIL;
                     }
-                } else if ("minecraft:ender_pearl".equals(itemId)) {
-                    UUID uuid = serverPlayer.getUUID();
-                    long now = System.currentTimeMillis();
-                    Long combatEnd = combatTagExpiration.get(uuid);
-                    boolean inCombat = combatEnd != null && now < combatEnd;
+                    if (!ConfigManager.getConfig().allowFireworksInCombat && stack.is(net.minecraft.world.item.Items.FIREWORK_ROCKET)) {
+                        serverPlayer.sendSystemMessage(Component.literal("Firework Rockets are disabled during combat!").withStyle(ChatFormatting.RED));
+                        return net.minecraft.world.InteractionResult.FAIL;
+                    }
+                }
+
+                if ("minecraft:ender_pearl".equals(itemId)) {
                     if (inCombat) {
                         Double cooldownSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:ender_pearl");
                         if (cooldownSec != null && cooldownSec > 0.0) {
@@ -281,7 +270,7 @@ public class CombatMod implements ModInitializer {
             return net.minecraft.world.InteractionResult.PASS;
         });
 
-        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+        ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (UUID uuid : pendingPearlThrows) {
                 ServerPlayer player = server.getPlayerList().getPlayer(uuid);
                 if (player != null) {
@@ -295,20 +284,6 @@ public class CombatMod implements ModInitializer {
                 }
             }
             pendingPearlThrows.clear();
-
-            for (UUID uuid : pendingSpearUses) {
-                ServerPlayer player = server.getPlayerList().getPlayer(uuid);
-                if (player != null) {
-                    Double spearSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
-                    if (spearSec != null && spearSec > 0.0) {
-                        long now = System.currentTimeMillis();
-                        spearLungeExpiration.put(uuid, now + (long)(spearSec * 1000L));
-                        ItemStack mainHand = player.getMainHandItem();
-                        if (!mainHand.isEmpty()) player.getCooldowns().addCooldown(mainHand, (int)(spearSec * 20));
-                    }
-                }
-            }
-            pendingSpearUses.clear();
         });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
@@ -415,56 +390,6 @@ public class CombatMod implements ModInitializer {
                     )
                 )
             );
-        });
-
-        ServerTickEvents.END_SERVER_TICK.register(server -> {
-            long now = System.currentTimeMillis();
-            Set<UUID> onlineUuids = new HashSet<>();
-            for (ServerPlayer player : server.getPlayerList().getPlayers()) {
-                UUID uuid = player.getUUID();
-                onlineUuids.add(uuid);
-                DataManager.tickOnlinePlayer(uuid);
-            }
-            if (server.getTickCount() % 20 == 0) {
-                DataManager.updateWorldLimits(now, ConfigManager.getConfig().worldLimits.entrySet().stream()
-                    .collect(java.util.stream.Collectors.toMap(e -> e.getKey(), e -> e.getValue().maxCount)), onlineUuids);
-            }
-        });
-
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            DataManager.onPlayerLogin(handler.getPlayer().getUUID());
-        });
-
-        ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
-            ServerPlayer player = handler.getPlayer();
-            UUID uuid = player.getUUID();
-            if (combatTagExpiration.containsKey(uuid)) {
-                combatTagExpiration.remove(uuid);
-                // Drop all items on the ground so combat loggers drop everything
-                for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
-                    ItemStack stack = player.getInventory().getItem(i);
-                    if (!stack.isEmpty()) {
-                        player.drop(stack.copy(), true, false);
-                        player.getInventory().setItem(i, ItemStack.EMPTY);
-                    }
-                }
-                player.kill((net.minecraft.server.level.ServerLevel) player.level());
-            }
-            DataManager.onPlayerLogout(uuid);
-        });
-
-        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
-            if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
-                if (world.getBlockState(hitResult.getBlockPos()).is(Blocks.ENDER_CHEST)) {
-                    if (combatTagExpiration.containsKey(serverPlayer.getUUID())) {
-                        if (!ConfigManager.getConfig().allowEnderchestInCombat) {
-                            serverPlayer.sendSystemMessage(Component.literal("You cannot open Ender Chests in combat!").withStyle(ChatFormatting.RED));
-                            return InteractionResult.FAIL;
-                        }
-                    }
-                }
-            }
-            return InteractionResult.PASS;
         });
     }
 }

@@ -44,9 +44,6 @@ public class ItemCooldownsMixin implements CooldownsPlayerAccessor {
 
         String itemId = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();
         Double customCooldown = ConfigManager.getConfig().itemCooldowns.get(itemId);
-        if (customCooldown == null && itemId.contains("spear")) {
-            customCooldown = ConfigManager.getConfig().itemCooldowns.get("minecraft:spear");
-        }
 
         if (customCooldown != null && customCooldown > 0.0) {
             int customTicks = (int) (customCooldown * 20);

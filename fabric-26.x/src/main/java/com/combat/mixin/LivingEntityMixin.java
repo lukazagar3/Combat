@@ -26,6 +26,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.List;
 
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityMixin {
@@ -39,17 +40,6 @@ public abstract class LivingEntityMixin {
 
         Entity rawAttacker = source.getEntity();
         if (rawAttacker instanceof ServerPlayer attackerPlayer) {
-            if (isImmune(targetPlayer.getUUID())) {
-                targetPlayer.sendSystemMessage(Component.literal("You are immune to PvP damage!").withStyle(ChatFormatting.GREEN));
-                cir.setReturnValue(false);
-                return;
-            }
-            if (isImmune(attackerPlayer.getUUID())) {
-                attackerPlayer.sendSystemMessage(Component.literal("You cannot attack while immune!").withStyle(ChatFormatting.RED));
-                cir.setReturnValue(false);
-                return;
-            }
-
             long combatEndTime = System.currentTimeMillis() + ConfigManager.getConfig().combatLogSeconds * 1000L;
             com.combat.CombatMod.combatTagExpiration.put(targetPlayer.getUUID(), combatEndTime);
             com.combat.CombatMod.combatTagExpiration.put(attackerPlayer.getUUID(), combatEndTime);
@@ -72,14 +62,7 @@ public abstract class LivingEntityMixin {
 
         com.combat.CombatMod.combatTagExpiration.remove(victim.getUUID());
 
-        Entity rawAttacker = damageSource.getEntity();
-        if (rawAttacker instanceof ServerPlayer killer) {
-            int immunitySeconds = ConfigManager.getConfig().immunitySeconds;
-            if (immunitySeconds > 0) {
-                long immunityEndTime = System.currentTimeMillis() + immunitySeconds * 1000L;
-                com.combat.CombatMod.immunityExpiration.put(victim.getUUID(), immunityEndTime);
-                victim.sendSystemMessage(Component.literal("You were killed by a player! Immunity active for " + immunitySeconds + "s.").withStyle(ChatFormatting.GREEN));
-            }
+        if (damageSource.getEntity() instanceof ServerPlayer killer) {
             handleKill(killer, victim);
         }
 
@@ -98,18 +81,6 @@ public abstract class LivingEntityMixin {
 
         if (!player.isAlive() || player.getHealth() <= 0.0f) {
             com.combat.CombatMod.combatTagExpiration.remove(uuid);
-        }
-
-        Long immunityEnd = com.combat.CombatMod.immunityExpiration.get(uuid);
-        if (immunityEnd != null) {
-            if (now < immunityEnd) {
-                int remainingSeconds = (int) Math.ceil((immunityEnd - now) / 1000.0);
-                player.sendSystemMessage(Component.literal("PvP Immunity Active: " + remainingSeconds + "s").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD), true);
-                player.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 40, 4, false, false, false));
-            } else {
-                com.combat.CombatMod.immunityExpiration.remove(uuid);
-                player.sendSystemMessage(Component.literal("PvP Immunity expired.").withStyle(ChatFormatting.YELLOW));
-            }
         }
 
         Long combatEnd = com.combat.CombatMod.combatTagExpiration.get(uuid);
@@ -151,15 +122,20 @@ public abstract class LivingEntityMixin {
                     }
                 }
 
-                if (pos == 1) {
-                    player.addEffect(new MobEffectInstance(MobEffects.STRENGTH, 40, 0, false, false, true));
-                    player.addEffect(new MobEffectInstance(MobEffects.SPEED, 40, 0, false, false, true));
-                    player.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 40, 0, false, false, true));
-                } else if (pos == 2) {
-                    player.addEffect(new MobEffectInstance(MobEffects.SPEED, 40, 0, false, false, true));
-                    player.addEffect(new MobEffectInstance(MobEffects.RESISTANCE, 40, 0, false, false, true));
-                } else if (pos == 3) {
-                    player.addEffect(new MobEffectInstance(MobEffects.SPEED, 40, 0, false, false, true));
+                if (ConfigManager.getConfig().topRanksEffectsEnabled) {
+                    List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new java.util.ArrayList<>());
+                    if (effects.contains("strength")) {
+                        MobEffectInstance current = player.getEffect(MobEffects.STRENGTH);
+                        if (current == null || current.getDuration() <= 20) {
+                            player.addEffect(new MobEffectInstance(MobEffects.STRENGTH, 300, 0, false, false, true));
+                        }
+                    }
+                    if (effects.contains("speed")) {
+                        MobEffectInstance current = player.getEffect(MobEffects.SPEED);
+                        if (current == null || current.getDuration() <= 20) {
+                            player.addEffect(new MobEffectInstance(MobEffects.SPEED, 300, 0, false, false, true));
+                        }
+                    }
                 }
             }
         } else {
@@ -168,11 +144,18 @@ public abstract class LivingEntityMixin {
                 maxHealthAttr.removeModifier(HEALTH_MODIFIER_ID);
             }
         }
-    }
 
-    private boolean isImmune(UUID uuid) {
-        Long expiration = com.combat.CombatMod.immunityExpiration.get(uuid);
-        return expiration != null && System.currentTimeMillis() < expiration;
+        if (!ConfigManager.getConfig().allowElytraInCombat && combatEnd != null && now < combatEnd) {
+            ItemStack chestStack = player.getItemBySlot(net.minecraft.world.entity.EquipmentSlot.CHEST);
+            if (chestStack.is(net.minecraft.world.item.Items.ELYTRA)) {
+                player.setItemSlot(net.minecraft.world.entity.EquipmentSlot.CHEST, ItemStack.EMPTY);
+                player.getInventory().add(chestStack);
+                if (!chestStack.isEmpty()) {
+                    player.drop(chestStack, false);
+                }
+                player.sendSystemMessage(Component.literal("Equipping Elytra is disabled during combat!").withStyle(ChatFormatting.RED));
+            }
+        }
     }
 
     private void handleKill(ServerPlayer killer, ServerPlayer victim) {

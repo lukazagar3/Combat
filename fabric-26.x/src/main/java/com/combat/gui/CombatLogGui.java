@@ -16,7 +16,7 @@ import java.util.List;
 public class CombatLogGui extends ChestGui {
 
     public CombatLogGui(ServerPlayer player) {
-        super(player, "Combat & Immunity Settings", 3);
+        super(player, "Combat Settings", 3);
     }
 
     @Override
@@ -52,13 +52,25 @@ public class CombatLogGui extends ChestGui {
         enderChest.set(DataComponents.LORE, new ItemLore(ecLore));
         inventory.setItem(12, enderChest);
 
-        ItemStack immunityTimer = new ItemStack(Items.GOLDEN_APPLE);
-        immunityTimer.set(DataComponents.CUSTOM_NAME, Component.literal("Immunity Timer").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
-        List<Component> immunityLore = new ArrayList<>();
-        immunityLore.add(Component.literal("Current: " + ConfigManager.getConfig().immunitySeconds + "s").withStyle(ChatFormatting.GRAY));
-        immunityLore.add(Component.literal("Click to Edit").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
-        immunityTimer.set(DataComponents.LORE, new ItemLore(immunityLore));
-        inventory.setItem(14, immunityTimer);
+        boolean elytraAllowed = ConfigManager.getConfig().allowElytraInCombat;
+        ItemStack elytra = new ItemStack(Items.ELYTRA);
+        elytra.set(DataComponents.CUSTOM_NAME, Component.literal("Equip Elytra in Combat").withStyle(ChatFormatting.AQUA, ChatFormatting.BOLD));
+        List<Component> elytraLore = new ArrayList<>();
+        elytraLore.add(Component.literal("Status: ").withStyle(ChatFormatting.GRAY)
+            .append(elytraAllowed ? Component.literal("ENABLED").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD) : Component.literal("DISABLED").withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
+        elytraLore.add(Component.literal("Click to Toggle").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
+        elytra.set(DataComponents.LORE, new ItemLore(elytraLore));
+        inventory.setItem(14, elytra);
+
+        boolean fireworkAllowed = ConfigManager.getConfig().allowFireworksInCombat;
+        ItemStack firework = new ItemStack(Items.FIREWORK_ROCKET);
+        firework.set(DataComponents.CUSTOM_NAME, Component.literal("Firework Rockets in Combat").withStyle(ChatFormatting.DARK_GREEN, ChatFormatting.BOLD));
+        List<Component> fireworkLore = new ArrayList<>();
+        fireworkLore.add(Component.literal("Status: ").withStyle(ChatFormatting.GRAY)
+            .append(fireworkAllowed ? Component.literal("ENABLED").withStyle(ChatFormatting.GREEN, ChatFormatting.BOLD) : Component.literal("DISABLED").withStyle(ChatFormatting.RED, ChatFormatting.BOLD)));
+        fireworkLore.add(Component.literal("Click to Toggle").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
+        firework.set(DataComponents.LORE, new ItemLore(fireworkLore));
+        inventory.setItem(16, firework);
     }
 
     @Override
@@ -88,23 +100,13 @@ public class CombatLogGui extends ChestGui {
             ConfigManager.save();
             setupItems();
         } else if (slotId == 14) {
-            new AnvilInputGui(player, "Immunity Duration (sec)", String.valueOf(ConfigManager.getConfig().immunitySeconds)) {
-                @Override
-                protected void handleInput(String input) {
-                    try {
-                        int seconds = Integer.parseInt(input.trim());
-                        if (seconds < 0) {
-                            player.sendSystemMessage(Component.literal("Cannot be negative!").withStyle(ChatFormatting.RED));
-                        } else {
-                            ConfigManager.getConfig().immunitySeconds = seconds;
-                            ConfigManager.save();
-                        }
-                    } catch (NumberFormatException e) {
-                        player.sendSystemMessage(Component.literal("Invalid seconds!").withStyle(ChatFormatting.RED));
-                    }
-                    new CombatLogGui(player).open();
-                }
-            }.open();
+            ConfigManager.getConfig().allowElytraInCombat = !ConfigManager.getConfig().allowElytraInCombat;
+            ConfigManager.save();
+            setupItems();
+        } else if (slotId == 16) {
+            ConfigManager.getConfig().allowFireworksInCombat = !ConfigManager.getConfig().allowFireworksInCombat;
+            ConfigManager.save();
+            setupItems();
         }
     }
 }

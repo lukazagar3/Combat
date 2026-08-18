@@ -12,12 +12,12 @@ import net.minecraft.entity.damage.DamageSource;
 import net.minecraft.entity.effect.StatusEffectInstance;
 import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import net.minecraft.util.Identifier;
 import net.minecraft.registry.Registries;
 import net.minecraft.item.ItemStack;
-import net.minecraft.server.MinecraftServer;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -27,6 +27,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.List;
 
 @Mixin(LivingEntity.class)
 public abstract class LivingEntityMixin {
@@ -38,19 +39,7 @@ public abstract class LivingEntityMixin {
         Object self = this;
         if (!(self instanceof ServerPlayerEntity targetPlayer)) return;
 
-        Entity rawAttacker = source.getAttacker() != null ? source.getAttacker() : source.getSource();
-        if (rawAttacker instanceof ServerPlayerEntity attackerPlayer) {
-            if (isImmune(targetPlayer.getUuid())) {
-                targetPlayer.sendMessage(Text.literal("You are immune to PvP damage!").formatted(Formatting.GREEN), false);
-                cir.setReturnValue(false);
-                return;
-            }
-            if (isImmune(attackerPlayer.getUuid())) {
-                attackerPlayer.sendMessage(Text.literal("You cannot attack while immune!").formatted(Formatting.RED), false);
-                cir.setReturnValue(false);
-                return;
-            }
-
+        if (source.getAttacker() instanceof ServerPlayerEntity attackerPlayer) {
             long combatEndTime = System.currentTimeMillis() + ConfigManager.getConfig().combatLogSeconds * 1000L;
             com.combat.CombatMod.combatTagExpiration.put(targetPlayer.getUuid(), combatEndTime);
             com.combat.CombatMod.combatTagExpiration.put(attackerPlayer.getUuid(), combatEndTime);
@@ -73,14 +62,7 @@ public abstract class LivingEntityMixin {
 
         com.combat.CombatMod.combatTagExpiration.remove(victim.getUuid());
 
-        Entity rawAttacker = damageSource.getAttacker() != null ? damageSource.getAttacker() : damageSource.getSource();
-        if (rawAttacker instanceof ServerPlayerEntity killer) {
-            int immunitySeconds = ConfigManager.getConfig().immunitySeconds;
-            if (immunitySeconds > 0) {
-                long immunityEndTime = System.currentTimeMillis() + immunitySeconds * 1000L;
-                com.combat.CombatMod.immunityExpiration.put(victim.getUuid(), immunityEndTime);
-                victim.sendMessage(Text.literal("You were killed by a player! Immunity active for " + immunitySeconds + "s.").formatted(Formatting.GREEN), false);
-            }
+        if (damageSource.getAttacker() instanceof ServerPlayerEntity killer) {
             handleKill(killer, victim);
         }
 
@@ -99,18 +81,6 @@ public abstract class LivingEntityMixin {
 
         if (!player.isAlive() || player.getHealth() <= 0.0f) {
             com.combat.CombatMod.combatTagExpiration.remove(uuid);
-        }
-
-        Long immunityEnd = com.combat.CombatMod.immunityExpiration.get(uuid);
-        if (immunityEnd != null) {
-            if (now < immunityEnd) {
-                int remainingSeconds = (int) Math.ceil((immunityEnd - now) / 1000.0);
-                player.sendMessage(Text.literal("PvP Immunity Active: " + remainingSeconds + "s").formatted(Formatting.GREEN, Formatting.BOLD), true);
-                player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 4, false, false, false));
-            } else {
-                com.combat.CombatMod.immunityExpiration.remove(uuid);
-                player.sendMessage(Text.literal("PvP Immunity expired.").formatted(Formatting.YELLOW), false);
-            }
         }
 
         Long combatEnd = com.combat.CombatMod.combatTagExpiration.get(uuid);
@@ -152,15 +122,20 @@ public abstract class LivingEntityMixin {
                     }
                 }
 
-                if (pos == 1) {
-                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 40, 0, false, false, true));
-                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 0, false, false, true));
-                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 0, false, false, true));
-                } else if (pos == 2) {
-                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 0, false, false, true));
-                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.RESISTANCE, 40, 0, false, false, true));
-                } else if (pos == 3) {
-                    player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 40, 0, false, false, true));
+                if (ConfigManager.getConfig().topRanksEffectsEnabled) {
+                    List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(pos, k -> new java.util.ArrayList<>());
+                    if (effects.contains("strength")) {
+                        StatusEffectInstance current = player.getStatusEffect(StatusEffects.STRENGTH);
+                        if (current == null || current.getDuration() <= 20) {
+                            player.addStatusEffect(new StatusEffectInstance(StatusEffects.STRENGTH, 300, 0, false, false, true));
+                        }
+                    }
+                    if (effects.contains("speed")) {
+                        StatusEffectInstance current = player.getStatusEffect(StatusEffects.SPEED);
+                        if (current == null || current.getDuration() <= 20) {
+                            player.addStatusEffect(new StatusEffectInstance(StatusEffects.SPEED, 300, 0, false, false, true));
+                        }
+                    }
                 }
             }
         } else {
@@ -169,11 +144,18 @@ public abstract class LivingEntityMixin {
                 maxHealthAttr.removeModifier(HEALTH_MODIFIER_ID);
             }
         }
-    }
 
-    private boolean isImmune(UUID uuid) {
-        Long expiration = com.combat.CombatMod.immunityExpiration.get(uuid);
-        return expiration != null && System.currentTimeMillis() < expiration;
+        if (!ConfigManager.getConfig().allowElytraInCombat && combatEnd != null && now < combatEnd) {
+            ItemStack chestStack = player.getEquippedStack(net.minecraft.entity.EquipmentSlot.CHEST);
+            if (chestStack.isOf(net.minecraft.item.Items.ELYTRA)) {
+                player.equipStack(net.minecraft.entity.EquipmentSlot.CHEST, ItemStack.EMPTY);
+                player.getInventory().insertStack(chestStack);
+                if (!chestStack.isEmpty()) {
+                    player.dropItem(chestStack, false, false);
+                }
+                player.sendMessage(Text.literal("Equipping Elytra is disabled during combat!").formatted(Formatting.RED), false);
+            }
+        }
     }
 
     private void handleKill(ServerPlayerEntity killer, ServerPlayerEntity victim) {
