@@ -2,34 +2,37 @@ package com.combat;
 
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.entity.event.v1.ServerEntityCombatEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
+import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
+import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
-import net.minecraft.commands.arguments.item.ItemArgument;
-import net.minecraft.commands.arguments.item.ItemInput;
-import net.minecraft.world.item.ItemStack;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.network.chat.Component;
-import net.minecraft.resources.Identifier;
-import net.minecraft.ChatFormatting;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.DoubleArgumentType;
+import net.minecraft.world.item.ItemStack;
 
 import java.io.File;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.Set;
-import java.util.HashSet;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class CombatMod implements ModInitializer {
-    public static MinecraftServer serverInstance;
-    public static final Map<UUID, Long> combatTagExpiration = new HashMap<>();
-    public static final Map<UUID, Long> tridentRiptideExpiration = new HashMap<>();
-    public static final java.util.Set<UUID> pendingPearlThrows = new java.util.HashSet<>();
-    public static final java.util.Set<String> notifiedOwnership = new java.util.HashSet<>();
+    public static final Map<UUID, Long> combatTagExpiration = new ConcurrentHashMap<>();
+    public static final Map<UUID, Long> immunityExpiration = new ConcurrentHashMap<>();
+    public static final Map<UUID, Long> spearLungeExpiration = new ConcurrentHashMap<>();
+    public static final Map<UUID, Long> tridentRiptideExpiration = new ConcurrentHashMap<>();
+    public static final Map<UUID, UUID> lastAttackerMap = new ConcurrentHashMap<>();
+    public static final java.util.Set<UUID> pendingPvPRespawn = java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
+    public static final java.util.Set<UUID> pendingPearlThrows = java.util.Collections.newSetFromMap(new ConcurrentHashMap<>());
+    public static final Map<UUID, Long> pendingLungeCooldown = new ConcurrentHashMap<>();
+    // Pending cooldowns applied at end-of-tick so the current attack goes through first
+    public static final Map<UUID, Integer> pendingMaceCooldown = new ConcurrentHashMap<>();
+
+    public static MinecraftServer serverInstance = null;
 
     public static void assignRankIfUnranked(ServerPlayer player) {
         if (!ConfigManager.getConfig().rankedSystemEnabled) return;
@@ -90,36 +93,39 @@ public class CombatMod implements ModInitializer {
     }
 
     public static int getMaxAllowedCount(ServerPlayer player, String itemId) {
-        if (ConfigManager.getConfig().limitsOnlyInCombat) {
-            UUID uuid = player.getUUID();
-            Long combatEnd = combatTagExpiration.get(uuid);
-            boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
-            if (!inCombat) {
-                return Integer.MAX_VALUE;
-            }
-        }
-
         int maxAllowed = Integer.MAX_VALUE;
 
-        Integer invLimit = ConfigManager.getConfig().itemLimits.get(itemId);
-        if (invLimit != null && invLimit >= 0) {
-            int current = countItemInPlayer(player, itemId);
-            maxAllowed = Math.min(maxAllowed, Math.max(0, invLimit - current));
-        }
-
+        // World limits are ALWAYS enforced 24/7 regardless of limitsOnlyInCombat
         CombatConfig.WorldLimitedItem wli = ConfigManager.getConfig().worldLimits.get(itemId);
         if (wli != null && wli.maxCount > 0) {
             int current = countItemInPlayer(player, itemId);
-            if (current >= 1) {
-                maxAllowed = 0;
-            } else if (!DataManager.isOwner(player.getUUID(), itemId)) {
+            if (current >= wli.maxCount) {
+                return 0;
+            }
+            if (!DataManager.isOwner(player.getUUID(), itemId)) {
                 if (!DataManager.tryAcquire(player.getUUID(), itemId, wli.maxCount)) {
-                    maxAllowed = 0;
+                    return 0;
                 } else {
-                    maxAllowed = Math.min(maxAllowed, 1);
+                    maxAllowed = Math.min(maxAllowed, wli.maxCount - current);
                 }
             } else {
-                maxAllowed = Math.min(maxAllowed, 1);
+                maxAllowed = Math.min(maxAllowed, wli.maxCount - current);
+            }
+        }
+
+        // Inventory item limits are subject to limitsOnlyInCombat
+        boolean applyInvLimits = true;
+        if (ConfigManager.getConfig().limitsOnlyInCombat) {
+            UUID uuid = player.getUUID();
+            Long combatEnd = combatTagExpiration.get(uuid);
+            applyInvLimits = combatEnd != null && System.currentTimeMillis() < combatEnd;
+        }
+
+        if (applyInvLimits) {
+            Integer invLimit = ConfigManager.getConfig().itemLimits.get(itemId);
+            if (invLimit != null && invLimit >= 0) {
+                int current = countItemInPlayer(player, itemId);
+                maxAllowed = Math.min(maxAllowed, Math.max(0, invLimit - current));
             }
         }
 
@@ -127,27 +133,11 @@ public class CombatMod implements ModInitializer {
     }
 
     public static boolean isItemLimitExceeded(ServerPlayer player, String itemId, int incomingCount) {
-        if (ConfigManager.getConfig().limitsOnlyInCombat) {
-            UUID uuid = player.getUUID();
-            Long combatEnd = combatTagExpiration.get(uuid);
-            boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
-            if (!inCombat) {
-                return false;
-            }
-        }
-
-        Integer invLimit = ConfigManager.getConfig().itemLimits.get(itemId);
-        if (invLimit != null && invLimit >= 0) {
-            int current = countItemInPlayer(player, itemId);
-            if (current + incomingCount > invLimit) {
-                return true;
-            }
-        }
-
+        // World limits ALWAYS enforced
         CombatConfig.WorldLimitedItem wli = ConfigManager.getConfig().worldLimits.get(itemId);
         if (wli != null && wli.maxCount > 0) {
             int current = countItemInPlayer(player, itemId);
-            if (current > 0) {
+            if (current + incomingCount > wli.maxCount) {
                 return true;
             }
             if (!DataManager.isOwner(player.getUUID(), itemId)) {
@@ -157,10 +147,73 @@ public class CombatMod implements ModInitializer {
             }
         }
 
+        // Inventory limits subject to limitsOnlyInCombat
+        boolean applyInvLimits = true;
+        if (ConfigManager.getConfig().limitsOnlyInCombat) {
+            UUID uuid = player.getUUID();
+            Long combatEnd = combatTagExpiration.get(uuid);
+            applyInvLimits = combatEnd != null && System.currentTimeMillis() < combatEnd;
+        }
+
+        if (applyInvLimits) {
+            Integer invLimit = ConfigManager.getConfig().itemLimits.get(itemId);
+            if (invLimit != null && invLimit >= 0) {
+                int current = countItemInPlayer(player, itemId);
+                if (current + incomingCount > invLimit) {
+                    return true;
+                }
+            }
+        }
+
         return false;
     }
 
+    public static boolean sanitizeItemEnchantments(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return false;
+        net.minecraft.world.item.enchantment.ItemEnchantments enchantments = stack.getEnchantments();
+        if (enchantments.isEmpty()) return false;
+
+        var configLimits = ConfigManager.getConfig().enchantLimits;
+        if (configLimits == null || configLimits.isEmpty()) return false;
+
+        net.minecraft.world.item.enchantment.ItemEnchantments.Mutable mutable = new net.minecraft.world.item.enchantment.ItemEnchantments.Mutable(enchantments);
+        boolean changed = false;
+
+        for (it.unimi.dsi.fastutil.objects.Object2IntMap.Entry<net.minecraft.core.Holder<net.minecraft.world.item.enchantment.Enchantment>> entry : enchantments.entrySet()) {
+            net.minecraft.core.Holder<net.minecraft.world.item.enchantment.Enchantment> enchantment = entry.getKey();
+            int level = entry.getIntValue();
+
+            net.minecraft.resources.Identifier id = enchantment.unwrapKey().map(net.minecraft.resources.ResourceKey::identifier).orElse(null);
+            if (id != null) {
+                String enchantId = id.toString();
+                Integer limit = configLimits.get(enchantId);
+                if (limit != null) {
+                    if (limit == 0) {
+                        mutable.set(enchantment, 0);
+                        changed = true;
+                    } else if (level > limit) {
+                        mutable.set(enchantment, limit);
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (changed) {
+            net.minecraft.world.item.enchantment.EnchantmentHelper.setEnchantments(stack, mutable.toImmutable());
+        }
+        return changed;
+    }
+
     public static void checkAndEnforceItemLimits(ServerPlayer player) {
+        if (player == null || player.getInventory() == null) return;
+        for (int i = 0; i < player.getInventory().getContainerSize(); i++) {
+            ItemStack s = player.getInventory().getItem(i);
+            if (!s.isEmpty()) {
+                sanitizeItemEnchantments(s);
+            }
+        }
+
         if (ConfigManager.getConfig().limitsOnlyInCombat) {
             UUID uuid = player.getUUID();
             Long combatEnd = combatTagExpiration.get(uuid);
@@ -198,9 +251,68 @@ public class CombatMod implements ModInitializer {
         }
     }
 
+    public static void handleKill(ServerPlayer killer, ServerPlayer victim) {
+        if (!ConfigManager.getConfig().rankedSystemEnabled) return;
+
+        PlayerData killerData = DataManager.getOrCreatePlayerData(killer.getUUID());
+        PlayerData victimData = DataManager.getOrCreatePlayerData(victim.getUUID());
+
+        int killerRank = killerData.rankPosition;
+        int victimRank = victimData.rankPosition;
+
+        if (victimRank != -1) {
+            if (killerRank == -1 || killerRank > victimRank) {
+                killerData.rankPosition = victimRank;
+                killerData.rank = "Rank #" + victimRank;
+
+                victimData.rankPosition = killerRank;
+                victimData.rank = killerRank == -1 ? "unranked" : "Rank #" + killerRank;
+
+                DataManager.save();
+
+                if (serverInstance != null) {
+                    serverInstance.getPlayerList().getPlayers().forEach(p -> p.sendSystemMessage(
+                        Component.literal(killer.getName().getString() + " (now Rank #" + victimRank + ") killed " +
+                                     victim.getName().getString() + " and took their rank!").withStyle(ChatFormatting.GOLD)
+                    ));
+                }
+
+                updatePlayerNametag(killer);
+                updatePlayerNametag(victim);
+            }
+        } else {
+            if (killerRank == -1) {
+                int nextRank = 1;
+                for (PlayerData pd : DataManager.getAllPlayersData().values()) {
+                    if (pd.rankPosition >= nextRank) {
+                        nextRank = pd.rankPosition + 1;
+                    }
+                }
+                killerData.rankPosition = nextRank;
+                killerData.rank = "Rank #" + nextRank;
+                DataManager.save();
+
+                final int finalNextRank = nextRank;
+                if (serverInstance != null) {
+                    serverInstance.getPlayerList().getPlayers().forEach(p -> p.sendSystemMessage(
+                        Component.literal(killer.getName().getString() + " achieved Rank #" + finalNextRank + "!").withStyle(ChatFormatting.GOLD)
+                    ));
+                }
+
+                updatePlayerNametag(killer);
+            }
+        }
+    }
+
     @Override
     public void onInitialize() {
         System.out.println("[Combat] Mod initialized!");
+
+        net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry.clientboundPlay().register(com.combat.network.LungeBlockPayload.TYPE, com.combat.network.LungeBlockPayload.STREAM_CODEC);
+        net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(com.combat.network.LungeBlockPayload.TYPE, (payload, context) -> {
+            spearLungeExpiration.put(context.player().getUUID(), payload.timestamp());
+        });
+
         ServerLifecycleEvents.SERVER_STARTING.register(server -> {
             serverInstance = server;
             File configDir = new File(server.getServerDirectory().toFile(), "config/combat");
@@ -216,7 +328,27 @@ public class CombatMod implements ModInitializer {
 
         net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register((handler, server) -> {
             ServerPlayer player = handler.getPlayer();
-            DataManager.onPlayerLogout(player.getUUID());
+            if (player != null) {
+                UUID uuid = player.getUUID();
+                Long combatEnd = combatTagExpiration.get(uuid);
+                if (combatEnd != null && System.currentTimeMillis() < combatEnd) {
+                    combatTagExpiration.remove(uuid);
+                    player.getInventory().dropAll();
+                    UUID attackerUuid = lastAttackerMap.get(uuid);
+                    if (attackerUuid != null && serverInstance != null) {
+                        ServerPlayer attacker = serverInstance.getPlayerList().getPlayer(attackerUuid);
+                        if (attacker != null) {
+                            handleKill(attacker, player);
+                        }
+                    }
+                    player.hurtServer((net.minecraft.server.level.ServerLevel) player.level(), player.damageSources().genericKill(), 1000.0F);
+                    server.getPlayerList().broadcastSystemMessage(
+                        Component.literal("[CombatLog] " + player.getName().getString() + " logged out during combat and was killed!").withStyle(ChatFormatting.RED, ChatFormatting.BOLD),
+                        false
+                    );
+                }
+                DataManager.onPlayerLogout(uuid);
+            }
         });
 
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> {
@@ -224,11 +356,117 @@ public class CombatMod implements ModInitializer {
             ConfigManager.save();
         });
 
+        ServerEntityCombatEvents.AFTER_KILLED_OTHER_ENTITY.register((world, ubijalec, zrtev, damageSource) -> {
+            if (ubijalec instanceof ServerPlayer killerPlayer && zrtev instanceof ServerPlayer victimPlayer) {
+                pendingPvPRespawn.add(victimPlayer.getUUID());
+                handleKill(killerPlayer, victimPlayer);
+            }
+        });
+
+        ServerLivingEntityEvents.AFTER_DEATH.register((entity, damageSource) -> {
+            if (entity instanceof ServerPlayer victim) {
+                UUID victimUuid = victim.getUUID();
+                Long combatEnd = combatTagExpiration.get(victimUuid);
+                boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
+
+                if (inCombat) {
+                    UUID attackerUuid = lastAttackerMap.get(victimUuid);
+                    if (attackerUuid != null && serverInstance != null) {
+                        ServerPlayer killer = serverInstance.getPlayerList().getPlayer(attackerUuid);
+                        if (killer != null && killer != victim) {
+                            handleKill(killer, victim);
+                        }
+                    }
+                }
+                combatTagExpiration.remove(victimUuid);
+            }
+        });
+
+        ServerPlayerEvents.AFTER_RESPAWN.register((stariIgralec, noviIgralec, alive) -> {
+            UUID id = noviIgralec.getUUID();
+            combatTagExpiration.remove(id);
+            if (pendingPvPRespawn.contains(id)) {
+                pendingPvPRespawn.remove(id);
+                int immunitySeconds = ConfigManager.getConfig().immunitySeconds;
+                if (immunitySeconds > 0) {
+                    long immunityEnd = System.currentTimeMillis() + immunitySeconds * 1000L;
+                    immunityExpiration.put(id, immunityEnd);
+                    noviIgralec.sendSystemMessage(Component.literal("You have " + immunitySeconds + " seconds of protection because a player killed you!").withStyle(ChatFormatting.GREEN));
+                }
+            }
+        });
+
+        ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
+            if (entity instanceof ServerPlayer victim) {
+                if (source.getEntity() instanceof ServerPlayer attacker && attacker != victim) {
+                    lastAttackerMap.put(victim.getUUID(), attacker.getUUID());
+                    int combatSec = ConfigManager.getConfig().combatLogSeconds;
+                    if (combatSec > 0) {
+                        long combatEnd = System.currentTimeMillis() + combatSec * 1000L;
+                        combatTagExpiration.put(victim.getUUID(), combatEnd);
+                        combatTagExpiration.put(attacker.getUUID(), combatEnd);
+                    }
+                }
+                UUID id = victim.getUUID();
+                Long exp = immunityExpiration.get(id);
+                if (exp != null) {
+                    if (System.currentTimeMillis() < exp) {
+                        return false;
+                    } else {
+                        immunityExpiration.remove(id);
+                        victim.sendSystemMessage(Component.literal("Your protection has expired!").withStyle(ChatFormatting.RED), true);
+                    }
+                }
+            }
+            return true;
+        });
+
+        // LEFT CLICK ATTACK INTERCEPTION
         net.fabricmc.fabric.api.event.player.AttackEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
+                if (entity instanceof ServerPlayer victimPlayer) {
+                    lastAttackerMap.put(victimPlayer.getUUID(), serverPlayer.getUUID());
+                    int combatSec = ConfigManager.getConfig().combatLogSeconds;
+                    if (combatSec > 0) {
+                        long combatEnd = System.currentTimeMillis() + combatSec * 1000L;
+                        combatTagExpiration.put(serverPlayer.getUUID(), combatEnd);
+                        combatTagExpiration.put(victimPlayer.getUUID(), combatEnd);
+                    }
+                }
                 ItemStack mainHand = serverPlayer.getItemInHand(hand);
-                if (mainHand.is(net.minecraft.world.item.Items.MACE)) {
-                    if (serverPlayer.getCooldowns().isOnCooldown(mainHand)) {
+                String itemId = BuiltInRegistries.ITEM.getKey(mainHand.getItem()).toString();
+
+                // Mace Cooldown: ONLY on smash attacks against PLAYERS
+                // We schedule the cooldown for next tick so the smash actually fires first.
+                if (mainHand.is(net.minecraft.world.item.Items.MACE) && entity instanceof ServerPlayer) {
+                    if (serverPlayer.fallDistance > 1.5F) {
+                        Double maceSec = ConfigManager.getConfig().itemCooldowns.get("minecraft:mace");
+                        if (maceSec == null || maceSec <= 0.0) maceSec = 5.0;
+                        if (serverPlayer.getCooldowns().isOnCooldown(mainHand)) {
+                            // Already on cooldown – block the smash
+                            return net.minecraft.world.InteractionResult.FAIL;
+                        }
+                        // Schedule cooldown for end-of-tick so Minecraft can finish the smash first
+                        pendingMaceCooldown.put(serverPlayer.getUUID(), (int)(maceSec * 20));
+                    }
+                }
+
+
+
+            }
+            return net.minecraft.world.InteractionResult.PASS;
+        });
+
+        // BLOCK INTERCEPTION (Ender Chest)
+        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
+                net.minecraft.world.level.block.state.BlockState state = world.getBlockState(hitResult.getBlockPos());
+                if (state.is(net.minecraft.world.level.block.Blocks.ENDER_CHEST)) {
+                    UUID uuid = serverPlayer.getUUID();
+                    Long combatEnd = combatTagExpiration.get(uuid);
+                    boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
+                    if (inCombat && !ConfigManager.getConfig().allowEnderchestInCombat) {
+                        serverPlayer.sendSystemMessage(Component.literal("Opening Ender Chest is disabled during combat!").withStyle(ChatFormatting.RED));
                         return net.minecraft.world.InteractionResult.FAIL;
                     }
                 }
@@ -236,6 +474,7 @@ public class CombatMod implements ModInitializer {
             return net.minecraft.world.InteractionResult.PASS;
         });
 
+        // RIGHT CLICK USE INTERCEPTION (Elytra, Fireworks, Ender Pearls)
         net.fabricmc.fabric.api.event.player.UseItemCallback.EVENT.register((player, world, hand) -> {
             if (!world.isClientSide() && player instanceof ServerPlayer serverPlayer) {
                 ItemStack stack = serverPlayer.getItemInHand(hand);
@@ -284,6 +523,22 @@ public class CombatMod implements ModInitializer {
                 }
             }
             pendingPearlThrows.clear();
+
+            // Apply mace cooldowns scheduled from this tick's smash attacks
+            for (Map.Entry<UUID, Integer> entry : pendingMaceCooldown.entrySet()) {
+                ServerPlayer p = server.getPlayerList().getPlayer(entry.getKey());
+                if (p != null) {
+                    p.getCooldowns().addCooldown(new ItemStack(net.minecraft.world.item.Items.MACE), entry.getValue());
+                }
+            }
+            pendingMaceCooldown.clear();
+
+            for (Map.Entry<UUID, Long> entry : pendingLungeCooldown.entrySet()) {
+                spearLungeExpiration.put(entry.getKey(), entry.getValue());
+            }
+            pendingLungeCooldown.clear();
+
+
         });
 
         CommandRegistrationCallback.EVENT.register((dispatcher, registryAccess, environment) -> {
@@ -336,58 +591,6 @@ public class CombatMod implements ModInitializer {
                         new com.combat.gui.CombatMenuGui(player).open();
                         return 1;
                     })
-                )
-                .then(Commands.literal("limit")
-                    .requires(source -> source.permissions().hasPermission(new net.minecraft.server.permissions.Permission.HasCommandLevel(net.minecraft.server.permissions.PermissionLevel.GAMEMASTERS)))
-                    .then(Commands.literal("set")
-                        .then(Commands.argument("item", ItemArgument.item(registryAccess))
-                            .then(Commands.argument("amount", IntegerArgumentType.integer(0))
-                                .executes(context -> {
-                                    ItemInput itemInput = ItemArgument.getItem(context, "item");
-                                    Identifier itemId = BuiltInRegistries.ITEM.getKey(itemInput.item().value());
-                                    int amount = IntegerArgumentType.getInteger(context, "amount");
-                                    ConfigManager.getConfig().itemLimits.put(itemId.toString(), amount);
-                                    ConfigManager.save();
-                                    context.getSource().sendSystemMessage(Component.literal("Set inventory limit of " + itemId + " to " + amount));
-                                    return 1;
-                                })
-                            )
-                        )
-                    )
-                )
-            );
-
-            dispatcher.register(Commands.literal("cooldown")
-                .requires(source -> source.permissions().hasPermission(new net.minecraft.server.permissions.Permission.HasCommandLevel(net.minecraft.server.permissions.PermissionLevel.GAMEMASTERS)))
-                .then(Commands.literal("set")
-                    .then(Commands.argument("item", ItemArgument.item(registryAccess))
-                        .then(Commands.argument("seconds", DoubleArgumentType.doubleArg(0.0))
-                            .executes(context -> {
-                                ItemInput itemInput = ItemArgument.getItem(context, "item");
-                                Identifier itemId = BuiltInRegistries.ITEM.getKey(itemInput.item().value());
-                                double seconds = DoubleArgumentType.getDouble(context, "seconds");
-                                ConfigManager.getConfig().itemCooldowns.put(itemId.toString(), seconds);
-                                ConfigManager.save();
-                                context.getSource().sendSystemMessage(Component.literal("Set cooldown of " + itemId + " to " + seconds + "s"));
-                                return 1;
-                            })
-                        )
-                    )
-                )
-            );
-
-            dispatcher.register(Commands.literal("combat_log")
-                .requires(source -> source.permissions().hasPermission(new net.minecraft.server.permissions.Permission.HasCommandLevel(net.minecraft.server.permissions.PermissionLevel.GAMEMASTERS)))
-                .then(Commands.literal("set")
-                    .then(Commands.argument("seconds", IntegerArgumentType.integer(0))
-                        .executes(context -> {
-                            int seconds = IntegerArgumentType.getInteger(context, "seconds");
-                            ConfigManager.getConfig().combatLogSeconds = seconds;
-                            ConfigManager.save();
-                            context.getSource().sendSystemMessage(Component.literal("Set combat log timer to " + seconds + "s"));
-                            return 1;
-                        })
-                    )
                 )
             );
         });

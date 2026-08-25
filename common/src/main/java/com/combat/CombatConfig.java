@@ -20,15 +20,22 @@ public class CombatConfig {
     public Map<String, WorldLimitedItem> worldLimits = new HashMap<>(); // item_id -> tracking data
     
     public Map<Integer, Integer> rankHealthBoosts = new HashMap<>(); // 1-indexed (1 to 10) -> extra max health (half hearts)
-    public Map<Integer, java.util.List<String>> rankPotionEffects = new HashMap<>(); // 1-indexed (1 to 10) -> list of potion effects ("speed", "strength")
+    public Map<Integer, java.util.List<String>> rankPotionEffects = new HashMap<>(); // 1-indexed (1 to 10) -> list of potion effects ("speed", "strength", "fire_resistance")
 
     public CombatConfig() {
+        // Default item cooldowns
+        itemCooldowns.put("minecraft:spear", 5.0);
+        itemCooldowns.put("minecraft:netherite_spear", 5.0);
+        itemCooldowns.put("minecraft:mace", 5.0);
+        itemCooldowns.put("minecraft:trident", 5.0);
+        itemCooldowns.put("minecraft:ender_pearl", 15.0);
+
         // Initialize default health boosts for top 10
         for (int i = 1; i <= 10; i++) {
             rankHealthBoosts.put(i, (11 - i) * 4); // #1 gets 40 (+20 hearts), #10 gets 4 (+2 hearts)
         }
         // Initialize default potion effects for top 3
-        rankPotionEffects.put(1, java.util.Arrays.asList("speed", "strength"));
+        rankPotionEffects.put(1, java.util.Arrays.asList("speed", "strength", "fire_resistance"));
         rankPotionEffects.put(2, java.util.Arrays.asList("speed", "strength"));
         rankPotionEffects.put(3, java.util.Arrays.asList("speed"));
     }

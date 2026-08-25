@@ -69,6 +69,15 @@ public class CombatLogGui extends ChestGui {
         fireworkLore.add(Text.literal("Click to Toggle").formatted(Formatting.YELLOW, Formatting.ITALIC));
         firework.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(fireworkLore));
         inventory.setStack(16, firework);
+
+        ItemStack immunityTimer = new ItemStack(Items.GOLDEN_APPLE);
+        immunityTimer.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Immunity Timer (on respawn)").formatted(Formatting.GOLD, Formatting.BOLD));
+        List<Text> immunityLore = new ArrayList<>();
+        immunityLore.add(Text.literal("Current: " + ConfigManager.getConfig().immunitySeconds + "s").formatted(Formatting.GRAY));
+        immunityLore.add(Text.literal("Immunity given after player kill death").formatted(Formatting.DARK_GRAY));
+        immunityLore.add(Text.literal("Click to Edit").formatted(Formatting.YELLOW, Formatting.ITALIC));
+        immunityTimer.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(immunityLore));
+        inventory.setStack(11, immunityTimer);
     }
 
     @Override
@@ -105,6 +114,24 @@ public class CombatLogGui extends ChestGui {
             ConfigManager.getConfig().allowFireworksInCombat = !ConfigManager.getConfig().allowFireworksInCombat;
             ConfigManager.save();
             setupItems();
+        } else if (slotId == 11) {
+            new AnvilInputGui(player, "Immunity Duration (sec)", String.valueOf(ConfigManager.getConfig().immunitySeconds)) {
+                @Override
+                protected void handleInput(String input) {
+                    try {
+                        int seconds = Integer.parseInt(input.trim());
+                        if (seconds < 0) {
+                            player.sendMessage(Text.literal("Cannot be negative!").formatted(Formatting.RED), false);
+                        } else {
+                            ConfigManager.getConfig().immunitySeconds = seconds;
+                            ConfigManager.save();
+                        }
+                    } catch (NumberFormatException e) {
+                        player.sendMessage(Text.literal("Invalid seconds!").formatted(Formatting.RED), false);
+                    }
+                    new CombatLogGui(player).open();
+                }
+            }.open();
         }
     }
 }

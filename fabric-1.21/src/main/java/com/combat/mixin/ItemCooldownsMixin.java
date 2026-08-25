@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 import net.minecraft.entity.player.PlayerEntity;
-import net.minecraft.server.network.ServerPlayerEntity;
+
 import java.util.UUID;
 
 @Mixin(ItemCooldownManager.class)
@@ -30,21 +30,17 @@ public class ItemCooldownsMixin implements CooldownsPlayerAccessor {
 
     @Inject(method = "set", at = @At("HEAD"), cancellable = true)
     private void overrideCooldown(ItemStack stack, int duration, CallbackInfo ci) {
-        if (this.combat$player instanceof ServerPlayerEntity serverPlayer) {
-            UUID uuid = serverPlayer.getUuid();
-            long now = System.currentTimeMillis();
+        String itemId = Registries.ITEM.getId(stack.getItem()).toString();
+        if (itemId.contains("spear")) return; // Do not animate cooldown on spear
+
+        if (combat$player != null) {
+            UUID uuid = combat$player.getUuid();
             Long combatEnd = com.combat.CombatMod.combatTagExpiration.get(uuid);
-            boolean inCombat = combatEnd != null && now < combatEnd;
-            if (!inCombat) {
-                return;
-            }
-        } else {
-            return;
+            boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
+            if (!inCombat) return; // Cooldown overrides ONLY apply in combat!
         }
 
-        String itemId = Registries.ITEM.getId(stack.getItem()).toString();
         Double customCooldown = ConfigManager.getConfig().itemCooldowns.get(itemId);
-
         if (customCooldown != null && customCooldown > 0.0) {
             int customTicks = (int) (customCooldown * 20);
             if (duration != customTicks) {

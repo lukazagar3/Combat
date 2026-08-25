@@ -81,46 +81,35 @@ public abstract class ScreenHandlerMixin {
             }
         }
 
-        // 2. Check placing world-limited items into external STORAGE containers
+        // 2. Check placing world-limited items into external STORAGE containers (ALWAYS enforced, no combat guard)
         if (!isWorkstation) {
-            boolean activeInContext = true;
-            if (ConfigManager.getConfig().limitsOnlyInCombat) {
-                Long combatEnd = com.combat.CombatMod.combatTagExpiration.get(serverPlayer.getUuid());
-                boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
-                if (!inCombat) {
-                    activeInContext = false;
-                }
-            }
-
-            if (activeInContext) {
-                java.util.Map<String, com.combat.CombatConfig.WorldLimitedItem> worldLimits = ConfigManager.getConfig().worldLimits;
-                if (!worldLimits.isEmpty()) {
-                    if (isExternalSlot && !carriedItem.isEmpty()) {
-                        String itemId = Registries.ITEM.getId(carriedItem.getItem()).toString();
-                        com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
-                        if (wli != null && wli.maxCount > 0) {
+            java.util.Map<String, com.combat.CombatConfig.WorldLimitedItem> worldLimits = ConfigManager.getConfig().worldLimits;
+            if (!worldLimits.isEmpty()) {
+                if (isExternalSlot && !carriedItem.isEmpty()) {
+                    String itemId = Registries.ITEM.getId(carriedItem.getItem()).toString();
+                    com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
+                    if (wli != null && wli.maxCount > 0) {
+                        serverPlayer.sendMessage(net.minecraft.text.Text.literal("World-limited items cannot be stored in containers!").formatted(Formatting.RED), false);
+                        ci.cancel();
+                        handler.sendContentUpdates();
+                        return;
+                    }
+                } else if (!isExternalSlot && actionType == net.minecraft.screen.slot.SlotActionType.QUICK_MOVE && !targetItem.isEmpty()) {
+                    String itemId = Registries.ITEM.getId(targetItem.getItem()).toString();
+                    com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
+                    if (wli != null && wli.maxCount > 0) {
+                        boolean hasExternal = false;
+                        for (Slot s : this.slots) {
+                            if (!(s.inventory instanceof net.minecraft.entity.player.PlayerInventory)) {
+                                hasExternal = true;
+                                break;
+                            }
+                        }
+                        if (hasExternal) {
                             serverPlayer.sendMessage(net.minecraft.text.Text.literal("World-limited items cannot be stored in containers!").formatted(Formatting.RED), false);
                             ci.cancel();
                             handler.sendContentUpdates();
                             return;
-                        }
-                    } else if (!isExternalSlot && actionType == net.minecraft.screen.slot.SlotActionType.QUICK_MOVE && !targetItem.isEmpty()) {
-                        String itemId = Registries.ITEM.getId(targetItem.getItem()).toString();
-                        com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
-                        if (wli != null && wli.maxCount > 0) {
-                            boolean hasExternal = false;
-                            for (Slot s : this.slots) {
-                                if (!(s.inventory instanceof net.minecraft.entity.player.PlayerInventory)) {
-                                    hasExternal = true;
-                                    break;
-                                }
-                            }
-                            if (hasExternal) {
-                                serverPlayer.sendMessage(net.minecraft.text.Text.literal("World-limited items cannot be stored in containers!").formatted(Formatting.RED), false);
-                                ci.cancel();
-                                handler.sendContentUpdates();
-                                return;
-                            }
                         }
                     }
                 }

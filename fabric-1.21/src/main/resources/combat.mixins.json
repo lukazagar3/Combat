@@ -13,7 +13,11 @@
     "PlayerEntityAccessor",
     "PlayerEntityMixin",
     "TridentItemMixin",
-    "ItemEntityMixin"
+    "EnchantmentHelperMixin",
+    "ItemEntityMixin",
+    "HopperBlockEntityMixin",
+    "ServerPlayNetworkHandlerMixin",
+    "EnchantmentScreenHandlerMixin"
   ],
   "injectors": {
     "defaultRequire": 1

@@ -82,46 +82,35 @@ public abstract class AbstractContainerMenuMixin {
             }
         }
 
-        // 2. Check placing world-limited items into external STORAGE containers
+        // 2. Check placing world-limited items into external STORAGE containers (ALWAYS enforced, no combat guard)
         if (!isWorkstation) {
-            boolean activeInContext = true;
-            if (ConfigManager.getConfig().limitsOnlyInCombat) {
-                Long combatEnd = com.combat.CombatMod.combatTagExpiration.get(serverPlayer.getUUID());
-                boolean inCombat = combatEnd != null && System.currentTimeMillis() < combatEnd;
-                if (!inCombat) {
-                    activeInContext = false;
-                }
-            }
-
-            if (activeInContext) {
-                java.util.Map<String, com.combat.CombatConfig.WorldLimitedItem> worldLimits = ConfigManager.getConfig().worldLimits;
-                if (!worldLimits.isEmpty()) {
-                    if (isExternalSlot && !carriedItem.isEmpty()) {
-                        String itemId = BuiltInRegistries.ITEM.getKey(carriedItem.getItem()).toString();
-                        com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
-                        if (wli != null && wli.maxCount > 0) {
+            java.util.Map<String, com.combat.CombatConfig.WorldLimitedItem> worldLimits = ConfigManager.getConfig().worldLimits;
+            if (!worldLimits.isEmpty()) {
+                if (isExternalSlot && !carriedItem.isEmpty()) {
+                    String itemId = BuiltInRegistries.ITEM.getKey(carriedItem.getItem()).toString();
+                    com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
+                    if (wli != null && wli.maxCount > 0) {
+                        serverPlayer.sendSystemMessage(Component.literal("World-limited items cannot be stored in containers!").withStyle(ChatFormatting.RED));
+                        ci.cancel();
+                        menu.broadcastChanges();
+                        return;
+                    }
+                } else if (!isExternalSlot && actionName.equals("QUICK_MOVE") && !targetItem.isEmpty()) {
+                    String itemId = BuiltInRegistries.ITEM.getKey(targetItem.getItem()).toString();
+                    com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
+                    if (wli != null && wli.maxCount > 0) {
+                        boolean hasExternal = false;
+                        for (Slot s : this.slots) {
+                            if (!(s.container instanceof net.minecraft.world.entity.player.Inventory)) {
+                                hasExternal = true;
+                                break;
+                            }
+                        }
+                        if (hasExternal) {
                             serverPlayer.sendSystemMessage(Component.literal("World-limited items cannot be stored in containers!").withStyle(ChatFormatting.RED));
                             ci.cancel();
                             menu.broadcastChanges();
                             return;
-                        }
-                    } else if (!isExternalSlot && actionName.equals("QUICK_MOVE") && !targetItem.isEmpty()) {
-                        String itemId = BuiltInRegistries.ITEM.getKey(targetItem.getItem()).toString();
-                        com.combat.CombatConfig.WorldLimitedItem wli = worldLimits.get(itemId);
-                        if (wli != null && wli.maxCount > 0) {
-                            boolean hasExternal = false;
-                            for (Slot s : this.slots) {
-                                if (!(s.container instanceof net.minecraft.world.entity.player.Inventory)) {
-                                    hasExternal = true;
-                                    break;
-                                }
-                            }
-                            if (hasExternal) {
-                                serverPlayer.sendSystemMessage(Component.literal("World-limited items cannot be stored in containers!").withStyle(ChatFormatting.RED));
-                                ci.cancel();
-                                menu.broadcastChanges();
-                                return;
-                            }
                         }
                     }
                 }

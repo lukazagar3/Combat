@@ -71,6 +71,15 @@ public class CombatLogGui extends ChestGui {
         fireworkLore.add(Component.literal("Click to Toggle").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
         firework.set(DataComponents.LORE, new ItemLore(fireworkLore));
         inventory.setItem(16, firework);
+
+        ItemStack immunityTimer = new ItemStack(Items.GOLDEN_APPLE);
+        immunityTimer.set(DataComponents.CUSTOM_NAME, Component.literal("Immunity Timer (on respawn)").withStyle(ChatFormatting.GOLD, ChatFormatting.BOLD));
+        List<Component> immunityLore = new ArrayList<>();
+        immunityLore.add(Component.literal("Current: " + ConfigManager.getConfig().immunitySeconds + "s").withStyle(ChatFormatting.GRAY));
+        immunityLore.add(Component.literal("Immunity given after player kill death").withStyle(ChatFormatting.DARK_GRAY));
+        immunityLore.add(Component.literal("Click to Edit").withStyle(ChatFormatting.YELLOW, ChatFormatting.ITALIC));
+        immunityTimer.set(DataComponents.LORE, new ItemLore(immunityLore));
+        inventory.setItem(11, immunityTimer);
     }
 
     @Override
@@ -107,6 +116,24 @@ public class CombatLogGui extends ChestGui {
             ConfigManager.getConfig().allowFireworksInCombat = !ConfigManager.getConfig().allowFireworksInCombat;
             ConfigManager.save();
             setupItems();
+        } else if (slotId == 11) {
+            new AnvilInputGui(player, "Immunity Duration (sec)", String.valueOf(ConfigManager.getConfig().immunitySeconds)) {
+                @Override
+                protected void handleInput(String input) {
+                    try {
+                        int seconds = Integer.parseInt(input.trim());
+                        if (seconds < 0) {
+                            player.sendSystemMessage(Component.literal("Cannot be negative!").withStyle(ChatFormatting.RED));
+                        } else {
+                            ConfigManager.getConfig().immunitySeconds = seconds;
+                            ConfigManager.save();
+                        }
+                    } catch (NumberFormatException e) {
+                        player.sendSystemMessage(Component.literal("Invalid seconds!").withStyle(ChatFormatting.RED));
+                    }
+                    new CombatLogGui(player).open();
+                }
+            }.open();
         }
     }
 }

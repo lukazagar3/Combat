@@ -57,6 +57,16 @@ public class RankPositionBuffsGui extends ChestGui {
         strengthLore.add(Text.literal("Click to Toggle").formatted(Formatting.YELLOW, Formatting.ITALIC));
         strengthItem.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(strengthLore));
         inventory.setStack(6, strengthItem);
+
+        boolean hasFireRes = effects.contains("fire_resistance");
+        ItemStack fireResItem = new ItemStack(Items.MAGMA_CREAM);
+        fireResItem.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME, Text.literal("Fire Resistance Effect").formatted(Formatting.GOLD));
+        List<Text> fireResLore = new ArrayList<>();
+        fireResLore.add(Text.literal("Status: ").formatted(Formatting.GRAY)
+            .append(hasFireRes ? Text.literal("ACTIVE").formatted(Formatting.GREEN, Formatting.BOLD) : Text.literal("INACTIVE").formatted(Formatting.RED, Formatting.BOLD)));
+        fireResLore.add(Text.literal("Click to Toggle").formatted(Formatting.YELLOW, Formatting.ITALIC));
+        fireResItem.set(net.minecraft.component.DataComponentTypes.LORE, new net.minecraft.component.type.LoreComponent(fireResLore));
+        inventory.setStack(8, fireResItem);
     }
 
     @Override
@@ -78,6 +88,15 @@ public class RankPositionBuffsGui extends ChestGui {
                 effects.remove("strength");
             } else {
                 effects.add("strength");
+            }
+            ConfigManager.save();
+            setupItems();
+        } else if (slotId == 8) {
+            List<String> effects = ConfigManager.getConfig().rankPotionEffects.computeIfAbsent(position, k -> new ArrayList<>());
+            if (effects.contains("fire_resistance")) {
+                effects.remove("fire_resistance");
+            } else {
+                effects.add("fire_resistance");
             }
             ConfigManager.save();
             setupItems();

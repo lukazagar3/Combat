@@ -1,7 +1,7 @@
 package com.combat.mixin;
 
-import net.minecraft.entity.player.PlayerEntity;
 import com.combat.util.CooldownsPlayerAccessor;
+import net.minecraft.entity.player.PlayerEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;

@@ -12,7 +12,11 @@
     "ItemCooldownsMixin",
     "PlayerMixin",
     "TridentItemMixin",
-    "ItemEntityMixin"
+    "EnchantmentHelperMixin",
+    "ItemEntityMixin",
+    "HopperBlockEntityMixin",
+    "ServerGamePacketListenerImplMixin",
+    "EnchantmentMenuMixin"
   ],
   "injectors": {
     "defaultRequire": 1
